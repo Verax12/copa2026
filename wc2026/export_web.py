@@ -268,6 +268,9 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
     n = len(teams_order)
     lambdas = [[[0.0, 0.0] for _ in range(n)] for _ in range(n)]
     scorelines = [[[0, 0] for _ in range(n)] for _ in range(n)]
+    # winScores[i][j] = placar mais provável em que i (mandante) VENCE j.
+    # usado no mata-mata (que não pode empatar) — mais variado que somar +1.
+    win_scores = [[[1, 0] for _ in range(n)] for _ in range(n)]
     for i, h in enumerate(teams_order):
         for j, a in enumerate(teams_order):
             if i == j:
@@ -277,6 +280,11 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
             M = model.score_matrix(h, a, neutral=True)
             gi, gj = np.unravel_index(int(M.argmax()), M.shape)
             scorelines[i][j] = [int(gi), int(gj)]
+            # moda restrita às vitórias do mandante (linha > coluna)
+            rows, cols = np.indices(M.shape)
+            Mwin = np.where(rows > cols, M, -1.0)
+            wi, wj = np.unravel_index(int(Mwin.argmax()), M.shape)
+            win_scores[i][j] = [int(wi), int(wj)]
 
     # --- jogos JÁ disputados (placar real) p/ o painel exibir o resultado real ---
     played_rows = []
@@ -306,6 +314,7 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
         "bracketSpec": bracket_spec,
         "lambdas": lambdas,
         "scorelines": scorelines,
+        "winScores": win_scores,
         "matchDates": match_dates,
         "venues": VENUES,
         "meta": {

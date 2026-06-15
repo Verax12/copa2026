@@ -46,16 +46,22 @@
   }
 
   // ---- vencedor de confronto eliminatório (favorito pelo λ) ----------
+  // placar = moda das vitórias do favorito (winScores), variado e sem empate.
   function simWinner(aId, bId, seed) {
     const lab = WD.lambdas[aId] && WD.lambdas[aId][bId];
     const la = lab ? lab[0] : 1.1, lb = lab ? lab[1] : 1.1;
     let winner;
     if (Math.abs(la - lb) < 1e-6) winner = byId(aId).strength >= byId(bId).strength ? aId : bId;
     else winner = la > lb ? aId : bId;
-    let [ga, gb] = predScore(aId, bId);
-    // mata-mata não termina empatado: garante que o favorito tenha mais gols
-    if (winner === aId && ga <= gb) ga = gb + 1;
-    if (winner === bId && gb <= ga) gb = ga + 1;
+    const ws = WD.winScores;
+    let ga, gb;
+    if (winner === aId) {
+      const w = ws && ws[aId] && ws[aId][bId];
+      [ga, gb] = w ? [w[0], w[1]] : [1, 0];
+    } else {
+      const w = ws && ws[bId] && ws[bId][aId];   // b vence a; orienta para (a,b)
+      [ga, gb] = w ? [w[1], w[0]] : [0, 1];
+    }
     return { winner, score: [ga, gb] };
   }
 
