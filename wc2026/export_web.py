@@ -299,12 +299,17 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
     # --- data/hora dos jogos (data dos disputados + hora do TheSportsDB) ---
     match_dates = build_match_dates(idx, played)
 
+    # --- track record: backtest sem vazamento dos jogos já disputados ---
+    from .track import backtest
+    track_record = backtest()
+
     data = {
         "teams": teams,
         "groupLabels": group_labels,
         "groups": groups,
         "played": played_rows,
         "matchStats": match_stats,
+        "trackRecord": track_record,
         "titleProb": title_prob,
         "finalProb": final_prob,
         "semiProb": semi_prob,

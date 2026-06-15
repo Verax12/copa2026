@@ -40,6 +40,71 @@ function Thermometer({ lang, onPick }) {
   );
 }
 
+/* ---------- TRACK RECORD (backtest pré-Copa) ---------- */
+function TrackRecord({ lang }) {
+  const tr = D.trackRecord;
+  const [open, setOpen] = useState(false);
+  if (!tr || !tr.summary || !tr.summary.n) return null;
+  const s = tr.summary;
+  const pt = lang === "pt";
+  const nm = (en) => { const t = D.teams.find(x => x.en === en); return t ? WC.name(t.id, lang) : en; };
+
+  return (
+    <div className="card card-accent-teal" style={{ padding: "22px 24px", marginBottom: "22px" }}>
+      <div className="eyebrow" style={{ color: "var(--teal)", marginBottom: "6px" }}>
+        {pt ? "Desempenho do modelo" : "Model performance"}
+      </div>
+      <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 400, fontSize: "26px", margin: "0 0 4px", color: "var(--brand-black)" }}>
+        {pt ? "Como o modelo foi nos jogos já disputados" : "How the model did on played games"}
+      </h2>
+      <p style={{ color: "var(--text-muted)", fontSize: "13px", margin: "0 0 16px", maxWidth: "70ch", lineHeight: 1.5 }}>
+        {pt
+          ? `Backtest honesto (sem vazamento): o modelo foi treinado só com dados de ANTES da Copa e testado nos ${s.n} jogos já realizados. Placar exato é loteria — o que importa é acertar o resultado e a calibração das probabilidades.`
+          : `Honest backtest (leakage-free): the model was trained only on pre-cup data and tested on the ${s.n} games played so far. Exact scores are luck — what matters is the result and probability calibration.`}
+      </p>
+
+      <div className="jstats" style={{ marginBottom: "8px" }}>
+        <div className="jstat card accent-teal">
+          <div className="l">{pt ? "Acerto do resultado" : "Result accuracy"}</div>
+          <div className="v">{s.winnerCorrect}<small>/{s.n}</small></div>
+        </div>
+        <div className="jstat card accent-purple">
+          <div className="l">{pt ? "Taxa de acerto" : "Hit rate"}</div>
+          <div className="v">{Math.round(s.winnerAcc * 100)}<small>%</small></div>
+        </div>
+        <div className="jstat card accent-red">
+          <div className="l">Brier <span style={{ textTransform: "none", letterSpacing: 0 }}>({pt ? "chute" : "guess"} {s.brierUniform})</span></div>
+          <div className="v">{s.brier.toFixed(2)}</div>
+        </div>
+        <div className="jstat card accent-lime">
+          <div className="l">Log-loss</div>
+          <div className="v">{s.logloss.toFixed(2)}</div>
+        </div>
+      </div>
+
+      <button className="btn" style={{ marginTop: "6px" }} onClick={() => setOpen(o => !o)}>
+        {open ? (pt ? "Ocultar jogo a jogo" : "Hide game by game") : (pt ? "Ver jogo a jogo" : "Show game by game")}
+      </button>
+
+      {open && (
+        <div style={{ marginTop: "14px", display: "grid", gap: "6px" }}>
+          {tr.games.map((g, i) => (
+            <div key={i} className="card" style={{ display: "grid", gridTemplateColumns: "26px 1fr auto", alignItems: "center", gap: "10px", padding: "9px 13px" }}>
+              <span style={{ fontSize: "15px" }}>{g.winnerHit ? "✅" : "❌"}</span>
+              <span style={{ fontFamily: "var(--font-cond)", fontSize: "13.5px", color: "var(--text-2)" }}>
+                <b style={{ color: "var(--brand-black)" }}>{nm(g.home)} {g.actual[0]}–{g.actual[1]} {nm(g.away)}</b>
+                <span style={{ color: "var(--text-muted)", marginLeft: "8px" }}>
+                  · {pt ? "prev." : "pred."} {g.predScore[0]}-{g.predScore[1]} · V {Math.round(g.ph * 100)}% E {Math.round(g.pd * 100)}% D {Math.round(g.pa * 100)}%
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HeroView({ lang, onPick }) {
   const T = I18N[lang];
   const champId = D.baseBracket.champion;
@@ -78,6 +143,8 @@ function HeroView({ lang, onPick }) {
 
         <Thermometer lang={lang} onPick={onPick} />
       </div>
+
+      <TrackRecord lang={lang} />
     </div>
   );
 }
