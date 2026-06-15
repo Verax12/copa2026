@@ -35,15 +35,14 @@
   // ---- groups: anexa referência rápida ------------------------------
   const groups = WD.groups;
 
-  // ---- placar previsto a partir do λ do modelo (determinístico) ------
-  function predScore(aId, bId, seed) {
-    const lab = WD.lambdas[aId] && WD.lambdas[aId][bId];
-    let la = lab ? lab[0] : 1.1, lb = lab ? lab[1] : 1.1;
-    const rng = rngFor((seed || "m") + "-" + aId + "-" + bId);
-    let ga = Math.round(la + (rng() - 0.5) * 0.9);
-    let gb = Math.round(lb + (rng() - 0.5) * 0.9);
-    if (ga < 0) ga = 0; if (gb < 0) gb = 0;
-    return [ga, gb];
+  // ---- placar previsto = MODA da matriz de placares do modelo --------
+  // (exportado por par; simétrico por construção, então o mesmo jogo mostra o
+  //  mesmo placar de qualquer perspectiva — A vs B é o espelho de B vs A)
+  function predScore(aId, bId) {
+    const sl = WD.scorelines && WD.scorelines[aId] && WD.scorelines[aId][bId];
+    if (sl) return [sl[0], sl[1]];
+    const lab = WD.lambdas[aId] && WD.lambdas[aId][bId];   // fallback
+    return [Math.round(lab ? lab[0] : 1), Math.round(lab ? lab[1] : 1)];
   }
 
   // ---- vencedor de confronto eliminatório (favorito pelo λ) ----------
@@ -53,7 +52,8 @@
     let winner;
     if (Math.abs(la - lb) < 1e-6) winner = byId(aId).strength >= byId(bId).strength ? aId : bId;
     else winner = la > lb ? aId : bId;
-    let [ga, gb] = predScore(aId, bId, "ko-" + seed);
+    let [ga, gb] = predScore(aId, bId);
+    // mata-mata não termina empatado: garante que o favorito tenha mais gols
     if (winner === aId && ga <= gb) ga = gb + 1;
     if (winner === bId && gb <= ga) gb = ga + 1;
     return { winner, score: [ga, gb] };
@@ -127,11 +127,14 @@
   function groupMatchesFor(teamId) {
     const t = byId(teamId);
     const g = groups[t.groupId];
+    const dates = WD.matchDates || {};
     return g.teamIds.filter(id => id !== teamId).map(oId => {
+      const md = dates[teamId + "-" + oId] || null;
+      const when = md ? { date: md.date, time: md.time } : { date: "", time: "" };
       const real = playedMap[teamId + "-" + oId];
-      if (real) return { opp: oId, gf: real[0], ga: real[1], group: g.label, played: true };
-      const [ga, gb] = predScore(teamId, oId, "grp-" + g.label);
-      return { opp: oId, gf: ga, ga: gb, group: g.label, played: false };
+      if (real) return { opp: oId, gf: real[0], ga: real[1], group: g.label, played: true, ...when };
+      const [ga, gb] = predScore(teamId, oId);
+      return { opp: oId, gf: ga, ga: gb, group: g.label, played: false, ...when };
     });
   }
 

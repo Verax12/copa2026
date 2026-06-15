@@ -43,7 +43,7 @@ jobs:
         run: python -m wc2026.thesportsdb --pull || echo "sem stats novas, seguindo"
 
       - name: Re-rodar previsões (com ajuste ao vivo)
-        run: python -m wc2026.export_web --live --sims 20000
+        run: python -m wc2026.export_web --live --sims 200000
 
       - name: Commitar dados atualizados
         run: |

@@ -132,6 +132,37 @@ def build_match_stats(idx: dict) -> list[dict]:
     return out
 
 
+def build_match_dates(idx: dict, played) -> dict:
+    """Data (e hora, quando houver) dos jogos. Data vem dos jogos já disputados
+    (results.csv); a hora vem do TheSportsDB quando disponível. Jogos futuros e
+    mata-mata ficam de fora (sem calendário carregado) → o painel deixa em branco."""
+    import json as J
+    from .thesportsdb import CACHE
+    from .live_form import normalize_team
+
+    times = {}
+    ev_fp = CACHE / "tsdb_events.json"
+    if ev_fp.exists():
+        for e in (J.loads(ev_fp.read_text()).get("events") or []):
+            h = normalize_team(e.get("strHomeTeam", ""))
+            a = normalize_team(e.get("strAwayTeam", ""))
+            tm = (e.get("strTime") or "")[:5]   # HH:MM
+            times[(h, a)] = tm
+            times[(a, h)] = tm
+
+    out = {}
+    for r in played.itertuples(index=False):
+        if r.home_team not in idx or r.away_team not in idx:
+            continue
+        iso = str(r.date)[:10]
+        ddmm = f"{iso[8:10]}/{iso[5:7]}" if len(iso) == 10 else iso
+        tm = times.get((r.home_team, r.away_team), "")
+        entry = {"date": ddmm, "time": tm}
+        out[f"{idx[r.home_team]}-{idx[r.away_team]}"] = entry
+        out[f"{idx[r.away_team]}-{idx[r.home_team]}"] = entry
+    return out
+
+
 def build_model(engine: str, live: bool):
     matches = load_matches()
     played = load_played_wc2026()
@@ -230,15 +261,22 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
         "sfPairs": [list(p) for p in B.SF_PAIRS],
     }
 
-    # --- matriz de gols esperados (neutro) entre todos os pares ---
+    # --- gols esperados + PLACAR MAIS PROVÁVEL (moda da matriz) por par ---
+    # o placar exibido é a moda da matriz de placares (argmax) — simétrico por
+    # construção, então o mesmo jogo mostra o mesmo placar de qualquer perspectiva.
+    import numpy as np
     n = len(teams_order)
     lambdas = [[[0.0, 0.0] for _ in range(n)] for _ in range(n)]
+    scorelines = [[[0, 0] for _ in range(n)] for _ in range(n)]
     for i, h in enumerate(teams_order):
         for j, a in enumerate(teams_order):
             if i == j:
                 continue
             lh, la = model.expected_goals(h, a, neutral=True)
             lambdas[i][j] = [round(float(lh), 3), round(float(la), 3)]
+            M = model.score_matrix(h, a, neutral=True)
+            gi, gj = np.unravel_index(int(M.argmax()), M.shape)
+            scorelines[i][j] = [int(gi), int(gj)]
 
     # --- jogos JÁ disputados (placar real) p/ o painel exibir o resultado real ---
     played_rows = []
@@ -249,6 +287,9 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
 
     # --- microestatísticas por jogo (o que a fonte gratuita fornece: finalizações) ---
     match_stats = build_match_stats(idx)
+
+    # --- data/hora dos jogos (data dos disputados + hora do TheSportsDB) ---
+    match_dates = build_match_dates(idx, played)
 
     data = {
         "teams": teams,
@@ -264,6 +305,8 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
         "seeds": seeds,
         "bracketSpec": bracket_spec,
         "lambdas": lambdas,
+        "scorelines": scorelines,
+        "matchDates": match_dates,
         "venues": VENUES,
         "meta": {
             "engine": engine, "sims": sims, "live": live,

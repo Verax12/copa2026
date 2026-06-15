@@ -402,6 +402,7 @@ select.tsel:focus { outline: none; border-color: var(--red); }
 .mrow { display: grid; grid-template-columns: 90px 1fr auto; align-items: center; gap: 14px; padding: 13px 16px; }
 @media (max-width: 540px) { .mrow { grid-template-columns: 72px 1fr; } .mrow .res { grid-column: 1/-1; } }
 .mrow .ph { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 1px; font-size: 11px; color: var(--text-muted); font-weight: 700; display: flex; flex-direction: column; gap: 3px; }
+.mrow .ph .whenm { font-size: 10.5px; letter-spacing: .3px; color: var(--text-2); font-weight: 700; }
 .mrow .ph .tagm { font-size: 9.5px; letter-spacing: .5px; color: var(--text-muted); opacity: .8; }
 .mrow .ph .tagm.real { color: var(--teal); opacity: 1; }
 .mrow .vs { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

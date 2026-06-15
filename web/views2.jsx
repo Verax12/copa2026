@@ -157,6 +157,7 @@ function TeamView({ lang, initId }) {
                      onClick={() => ms && setOpenStat(open ? null : m.opp)}>
                   <span className="ph">
                     {lang === "pt" ? "Grupos" : "Groups"} · {groupObj.label}
+                    {m.date && <span className="whenm">{m.date}{m.time ? " · " + m.time : ""}</span>}
                     <span className={"tagm" + (m.played ? " real" : "")}>{m.played ? "● " : ""}{tag}</span>
                   </span>
                   <div className="vs">
