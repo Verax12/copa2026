@@ -105,6 +105,23 @@
     playedMap[a + "-" + h] = [ag, hg];
   });
 
+  // ---- microestatísticas por jogo (orientadas à seleção escolhida) ---
+  const statMap = {};
+  (WD.matchStats || []).forEach(m => { statMap[m.h + "-" + m.a] = m; statMap[m.a + "-" + m.h] = m; });
+  function getMatchStats(teamId, oppId) {
+    const m = statMap[teamId + "-" + oppId];
+    if (!m) return null;
+    const flip = m.h !== teamId;   // seleção escolhida era o visitante no registro
+    return {
+      source: m.src,
+      stats: m.stats.map(s => ({
+        pt: s.pt, en: s.en,
+        you: flip ? s.away : s.home,
+        them: flip ? s.home : s.away
+      }))
+    };
+  }
+
   // ---- jogos da fase de grupos de uma seleção ------------------------
   // usa o RESULTADO REAL se o jogo já aconteceu; senão, o placar previsto.
   function groupMatchesFor(teamId) {
@@ -144,7 +161,7 @@
     qualifierIds: WD.qualifierIds, seeds: WD.seeds,
     titleProb: WD.titleProb,
     finalProb: WD.finalProb, semiProb: WD.semiProb, advProb: WD.advProb,
-    baseBracket, buildBracket, computeFinish, groupMatchesFor, predScore, byId,
+    baseBracket, buildBracket, computeFinish, groupMatchesFor, getMatchStats, predScore, byId,
     ROUND_KEYS, ROUND_LABEL, ROUND_SHORT,
     GROUP_LABELS: WD.groupLabels,
     meta: WD.meta

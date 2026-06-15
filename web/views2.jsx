@@ -5,8 +5,10 @@ function TeamView({ lang, initId }) {
   const T = I18N[lang];
   const finish   = useMemo(() => D.computeFinish(D.baseBracket), []);
   const [id, setId] = useState(initId != null ? initId : D.baseBracket.champion);
+  const [openStat, setOpenStat] = useState(null);  // opp id do jogo com painel de stats aberto
 
   useEffect(() => { if (initId != null) setId(initId); }, [initId]);
+  useEffect(() => { setOpenStat(null); }, [id]);
 
   const team    = D.byId(id);
   const groupObj = D.groups[team.groupId];
@@ -147,18 +149,57 @@ function TeamView({ lang, initId }) {
             const tag = m.played
               ? (lang === "pt" ? "Resultado" : "Result")
               : (lang === "pt" ? "Previsto" : "Predicted");
+            const ms = m.played ? D.getMatchStats(id, m.opp) : null;
+            const open = openStat === m.opp;
             return (
-              <div key={"g" + i} className="mrow card" style={{ marginBottom: "8px" }}>
-                <span className="ph">
-                  {lang === "pt" ? "Grupos" : "Groups"} · {groupObj.label}
-                  <span className={"tagm" + (m.played ? " real" : "")}>{m.played ? "● " : ""}{tag}</span>
-                </span>
-                <div className="vs">
-                  <TeamChip id={id} lang={lang} />
-                  <span className="sep">vs</span>
-                  <TeamChip id={m.opp} lang={lang} />
+              <div key={"g" + i} style={{ marginBottom: "8px" }}>
+                <div className={"mrow card" + (ms ? " clickable" : "")}
+                     onClick={() => ms && setOpenStat(open ? null : m.opp)}>
+                  <span className="ph">
+                    {lang === "pt" ? "Grupos" : "Groups"} · {groupObj.label}
+                    <span className={"tagm" + (m.played ? " real" : "")}>{m.played ? "● " : ""}{tag}</span>
+                  </span>
+                  <div className="vs">
+                    <TeamChip id={id} lang={lang} />
+                    <span className="sep">vs</span>
+                    <TeamChip id={m.opp} lang={lang} />
+                  </div>
+                  <div className={"res " + res}>
+                    {m.gf}–{m.ga}
+                    {ms && <span className="statschev">{open ? "▾" : "›"}</span>}
+                  </div>
                 </div>
-                <div className={"res " + res}>{m.gf}–{m.ga}</div>
+                {open && ms && (
+                  <div className="matchstats card">
+                    <div className="ms-hd">
+                      <span>{WC.name(id, lang)}</span>
+                      <span className="ms-src">{lang === "pt" ? "Estatísticas" : "Stats"} · {ms.source}</span>
+                      <span>{WC.name(m.opp, lang)}</span>
+                    </div>
+                    {ms.stats.map((s, j) => {
+                      const tot = (s.you + s.them) || 1;
+                      const youW = s.you > s.them, themW = s.them > s.you;
+                      return (
+                        <div key={j} className="ms-row">
+                          <span className={"ms-v" + (youW ? " win" : "")}>{s.you}</span>
+                          <div className="ms-bars">
+                            <div className="ms-label">{lang === "pt" ? s.pt : s.en}</div>
+                            <div className="ms-track">
+                              <i className="you" style={{ width: (s.you / tot * 100) + "%" }} />
+                              <i className="them" style={{ width: (s.them / tot * 100) + "%" }} />
+                            </div>
+                          </div>
+                          <span className={"ms-v them" + (themW ? " win" : "")}>{s.them}</span>
+                        </div>
+                      );
+                    })}
+                    <div className="ms-foot">
+                      {lang === "pt"
+                        ? "Fonte gratuita só fornece finalizações — escanteios/cartões exigem dados pagos."
+                        : "Free source only provides shots — corners/cards need paid data."}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

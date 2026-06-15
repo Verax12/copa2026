@@ -85,6 +85,53 @@ VENUES = [
 ]
 
 
+# microestatísticas por jogo que a fonte gratuita (TheSportsDB) fornece.
+# (key no JSON, rótulo PT, rótulo EN)
+STAT_LABELS = [
+    ("Total Shots", "Finalizações", "Total shots"),
+    ("Shots on Goal", "No alvo", "On target"),
+    ("Shots off Goal", "Para fora", "Off target"),
+    ("Blocked Shots", "Bloqueadas", "Blocked"),
+    ("Shots insidebox", "Dentro da área", "Inside box"),
+]
+
+
+def build_match_stats(idx: dict) -> list[dict]:
+    """Lê api_cache/tsdb_stats_*.json e devolve as microestatísticas por jogo,
+    mapeadas para os ids dos times. Só inclui o que a fonte tem (finalizações)."""
+    import glob
+    import json as J
+    from .thesportsdb import CACHE, _to_float
+    from .live_form import normalize_team
+
+    ev_fp = CACHE / "tsdb_events.json"
+    if not ev_fp.exists():
+        return []
+    events = {e["idEvent"]: e for e in (J.loads(ev_fp.read_text()).get("events") or [])}
+
+    out = []
+    for fp in sorted(glob.glob(str(CACHE / "tsdb_stats_*.json"))):
+        eid = Path(fp).stem.replace("tsdb_stats_", "")
+        st = J.loads(Path(fp).read_text()).get("eventstats")
+        ev = events.get(eid)
+        if not st or not ev:
+            continue
+        h = normalize_team(ev["strHomeTeam"])
+        a = normalize_team(ev["strAwayTeam"])
+        if h not in idx or a not in idx:
+            continue
+        smap = {s.get("strStat"): s for s in st}
+        stats = []
+        for key, pt, en in STAT_LABELS:
+            if key in smap:
+                stats.append({"pt": pt, "en": en,
+                              "home": _to_float(smap[key].get("intHome")),
+                              "away": _to_float(smap[key].get("intAway"))})
+        if stats:
+            out.append({"h": idx[h], "a": idx[a], "stats": stats, "src": "TheSportsDB"})
+    return out
+
+
 def build_model(engine: str, live: bool):
     matches = load_matches()
     played = load_played_wc2026()
@@ -200,11 +247,15 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
             played_rows.append([idx[r.home_team], idx[r.away_team],
                                 int(r.home_score), int(r.away_score)])
 
+    # --- microestatísticas por jogo (o que a fonte gratuita fornece: finalizações) ---
+    match_stats = build_match_stats(idx)
+
     data = {
         "teams": teams,
         "groupLabels": group_labels,
         "groups": groups,
         "played": played_rows,
+        "matchStats": match_stats,
         "titleProb": title_prob,
         "finalProb": final_prob,
         "semiProb": semi_prob,
