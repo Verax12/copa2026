@@ -1,0 +1,250 @@
+"""
+Exporta os dados REAIS do modelo para o dashboard web (web/wc_data.js).
+
+Roda o pipeline (Elo + motor de gols + Monte Carlo) e grava um arquivo JS que
+define `window.WC_DATA` com tudo que o frontend precisa, na estrutura estável:
+
+  WC_DATA = {
+    teams:      [{ id, en, pt, iso, strength, groupId }],
+    groupLabels:["A".."L"],
+    groups:     [{ id, label, teamIds, table:[{id,pos,pts,adv}] }],
+    titleProb:  { id: % },  finalProb/semiProb/advProb idem,
+    qualifierIds, seeds,
+    bracketSpec:{ r32:[[a,b]x16], r16Pairs, qfPairs, sfPairs },
+    lambdas:    [[ [lamA,lamB] ... 48] ... 48],   # gols esperados neutros por par
+    venues:     [...],
+    meta:       { engine, sims, live, generatedFrom }
+  }
+
+Uso:
+    python -m wc2026.export_web                 # Dixon-Coles, 20k sims
+    python -m wc2026.export_web --engine ml --live --sims 30000
+"""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from .data import load_matches, load_played_wc2026
+from .elo import compute_elo
+from .groups import GROUPS, all_teams
+from .shootout import calibrate, load_shootouts
+from .simulate import simulate
+from . import bracket as B
+
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+
+# nome PT + código ISO (flagcdn / flag-icons) para as 48 seleções reais da Copa 2026.
+# gb-eng / gb-sct para Inglaterra / Escócia.
+TEAM_META = {
+    "Mexico": ("México", "mx"), "South Africa": ("África do Sul", "za"),
+    "South Korea": ("Coreia do Sul", "kr"), "Czech Republic": ("Tchéquia", "cz"),
+    "Canada": ("Canadá", "ca"), "Qatar": ("Catar", "qa"),
+    "Switzerland": ("Suíça", "ch"), "Bosnia and Herzegovina": ("Bósnia e Herzegovina", "ba"),
+    "Brazil": ("Brasil", "br"), "Morocco": ("Marrocos", "ma"),
+    "Haiti": ("Haiti", "ht"), "Scotland": ("Escócia", "gb-sct"),
+    "United States": ("Estados Unidos", "us"), "Paraguay": ("Paraguai", "py"),
+    "Australia": ("Austrália", "au"), "Turkey": ("Turquia", "tr"),
+    "Germany": ("Alemanha", "de"), "Curaçao": ("Curaçao", "cw"),
+    "Ivory Coast": ("Costa do Marfim", "ci"), "Ecuador": ("Equador", "ec"),
+    "Netherlands": ("Holanda", "nl"), "Japan": ("Japão", "jp"),
+    "Tunisia": ("Tunísia", "tn"), "Sweden": ("Suécia", "se"),
+    "Belgium": ("Bélgica", "be"), "Egypt": ("Egito", "eg"),
+    "Iran": ("Irã", "ir"), "New Zealand": ("Nova Zelândia", "nz"),
+    "Spain": ("Espanha", "es"), "Cape Verde": ("Cabo Verde", "cv"),
+    "Saudi Arabia": ("Arábia Saudita", "sa"), "Uruguay": ("Uruguai", "uy"),
+    "France": ("França", "fr"), "Senegal": ("Senegal", "sn"),
+    "Norway": ("Noruega", "no"), "Iraq": ("Iraque", "iq"),
+    "Argentina": ("Argentina", "ar"), "Algeria": ("Argélia", "dz"),
+    "Austria": ("Áustria", "at"), "Jordan": ("Jordânia", "jo"),
+    "Portugal": ("Portugal", "pt"), "Uzbekistan": ("Uzbequistão", "uz"),
+    "Colombia": ("Colômbia", "co"), "DR Congo": ("RD Congo", "cd"),
+    "England": ("Inglaterra", "gb-eng"), "Croatia": ("Croácia", "hr"),
+    "Ghana": ("Gana", "gh"), "Panama": ("Panamá", "pa"),
+}
+
+# 16 sedes (estádios) — EUA/MEX/CAN. x/y em % para o mapa estilizado do design.
+VENUES = [
+    {"city": "Vancouver", "country": "CAN", "stadium": "BC Place", "x": 11, "y": 16},
+    {"city": "Seattle", "country": "USA", "stadium": "Lumen Field", "x": 12, "y": 24},
+    {"city": "San Francisco Bay", "country": "USA", "stadium": "Levi's Stadium", "x": 13, "y": 45},
+    {"city": "Los Angeles", "country": "USA", "stadium": "SoFi Stadium", "x": 17, "y": 55},
+    {"city": "Guadalajara", "country": "MEX", "stadium": "Estadio Akron", "x": 26, "y": 78},
+    {"city": "Mexico City", "country": "MEX", "stadium": "Estadio Azteca", "x": 33, "y": 82},
+    {"city": "Monterrey", "country": "MEX", "stadium": "Estadio BBVA", "x": 34, "y": 68},
+    {"city": "Houston", "country": "USA", "stadium": "NRG Stadium", "x": 43, "y": 64},
+    {"city": "Dallas", "country": "USA", "stadium": "AT&T Stadium", "x": 42, "y": 54},
+    {"city": "Kansas City", "country": "USA", "stadium": "Arrowhead Stadium", "x": 48, "y": 44},
+    {"city": "Atlanta", "country": "USA", "stadium": "Mercedes-Benz Stadium", "x": 62, "y": 56},
+    {"city": "Miami", "country": "USA", "stadium": "Hard Rock Stadium", "x": 70, "y": 70},
+    {"city": "Toronto", "country": "CAN", "stadium": "BMO Field", "x": 66, "y": 33},
+    {"city": "Philadelphia", "country": "USA", "stadium": "Lincoln Financial Field", "x": 76, "y": 40},
+    {"city": "New York / NJ", "country": "USA", "stadium": "MetLife Stadium", "x": 79, "y": 37},
+    {"city": "Boston", "country": "USA", "stadium": "Gillette Stadium", "x": 83, "y": 33},
+]
+
+
+def build_model(engine: str, live: bool):
+    matches = load_matches()
+    played = load_played_wc2026()
+    elo = compute_elo(matches)
+    beta = calibrate(load_shootouts(), elo)
+    if engine == "ml":
+        from .features import build_features, current_state
+        from .ml_model import train, MLGoalModel
+        feats = build_features(matches)
+        model = MLGoalModel(train(feats), current_state(matches), all_teams())
+    else:
+        from .goal_model import fit_dixon_coles
+        model = fit_dixon_coles(matches)
+    if live:
+        from .live_form import gather_live_stats, build_team_adjustments, AdjustedGoalModel
+        stats = gather_live_stats()
+        if not stats.empty:
+            model = AdjustedGoalModel(model, build_team_adjustments(model, stats))
+    return matches, played, elo, beta, model
+
+
+def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path:
+    matches, played, elo, beta, model = build_model(engine, live)
+    table = simulate(model, elo, played, n_sims=sims, shootout_beta=beta)
+
+    teams_order = all_teams()                      # ids 0..47 nesta ordem
+    idx = {t: i for i, t in enumerate(teams_order)}
+    row = {r["team"]: r for _, r in table.iterrows()}
+
+    # --- força normalizada (Elo -> 45..99) ---
+    from .elo import BASE_RATING
+    elos = [elo.get(t, BASE_RATING) for t in teams_order]
+    emin, emax = min(elos), max(elos)
+    def strength(t):
+        e = elo.get(t, BASE_RATING)
+        return round(45 + (e - emin) / (emax - emin + 1e-9) * 54)
+
+    teams = []
+    group_of = {}
+    for gi, (g, gteams) in enumerate(GROUPS.items()):
+        for t in gteams:
+            group_of[t] = gi
+    for t in teams_order:
+        pt, iso = TEAM_META[t]
+        teams.append({"id": idx[t], "en": t, "pt": pt, "iso": iso,
+                      "strength": strength(t), "groupId": group_of[t]})
+
+    # --- tabelas de grupo (ordenadas pela colocação esperada) ---
+    def rank_score(t):
+        r = row[t]
+        return 3 * r["p_first_%"] + 2 * r["p_second_%"] + 1 * r["p_third_%"]
+
+    group_labels = list(GROUPS.keys())
+    groups = []
+    predicted_first, predicted_second, predicted_third = {}, {}, {}
+    for gi, (g, gteams) in enumerate(GROUPS.items()):
+        ordered = sorted(gteams, key=rank_score, reverse=True)
+        predicted_first[g] = ordered[0]
+        predicted_second[g] = ordered[1]
+        predicted_third[g] = ordered[2]
+        tbl = []
+        for pos, t in enumerate(ordered):
+            tbl.append({"id": idx[t], "pos": pos + 1,
+                        "pts": round(row[t]["exp_pts"]),
+                        "adv": round(row[t]["advance_%"])})
+        groups.append({"id": gi, "label": g,
+                       "teamIds": [idx[t] for t in gteams], "table": tbl})
+
+    # --- probabilidades por seleção (id -> %) ---
+    def probmap(col):
+        return {idx[t]: round(row[t][col], 2) for t in teams_order}
+    title_prob = probmap("champion_%")
+    final_prob = probmap("finalist_%")
+    semi_prob = probmap("semifinal_%")
+    adv_prob = probmap("advance_%")
+
+    # --- bracket representativo: 8 melhores terceiros previstos + tabela oficial ---
+    thirds_ranked = sorted(group_labels, key=lambda g: row[predicted_third[g]]["advance_%"],
+                           reverse=True)
+    best_third_groups = sorted(thirds_ranked[:8])
+    qualified = {}
+    third_by_group = {}
+    for g in group_labels:
+        qualified[f"1{g}"] = predicted_first[g]
+        qualified[f"2{g}"] = predicted_second[g]
+        third_by_group[g] = predicted_third[g]
+    r32_pairs_names = B.resolve_r32(qualified, third_by_group, best_third_groups)
+    r32 = [[idx[h], idx[a]] for h, a in r32_pairs_names]
+    qualifier_ids = sorted({i for pair in r32 for i in pair})
+    seeds = sorted(qualifier_ids, key=lambda i: title_prob[i], reverse=True)
+
+    bracket_spec = {
+        "r32": r32,
+        "r16Pairs": [list(p) for p in B.R16_PAIRS],
+        "qfPairs": [list(p) for p in B.QF_PAIRS],
+        "sfPairs": [list(p) for p in B.SF_PAIRS],
+    }
+
+    # --- matriz de gols esperados (neutro) entre todos os pares ---
+    n = len(teams_order)
+    lambdas = [[[0.0, 0.0] for _ in range(n)] for _ in range(n)]
+    for i, h in enumerate(teams_order):
+        for j, a in enumerate(teams_order):
+            if i == j:
+                continue
+            lh, la = model.expected_goals(h, a, neutral=True)
+            lambdas[i][j] = [round(float(lh), 3), round(float(la), 3)]
+
+    # --- jogos JÁ disputados (placar real) p/ o painel exibir o resultado real ---
+    played_rows = []
+    for r in played.itertuples(index=False):
+        if r.home_team in idx and r.away_team in idx:
+            played_rows.append([idx[r.home_team], idx[r.away_team],
+                                int(r.home_score), int(r.away_score)])
+
+    data = {
+        "teams": teams,
+        "groupLabels": group_labels,
+        "groups": groups,
+        "played": played_rows,
+        "titleProb": title_prob,
+        "finalProb": final_prob,
+        "semiProb": semi_prob,
+        "advProb": adv_prob,
+        "qualifierIds": qualifier_ids,
+        "seeds": seeds,
+        "bracketSpec": bracket_spec,
+        "lambdas": lambdas,
+        "venues": VENUES,
+        "meta": {
+            "engine": engine, "sims": sims, "live": live,
+            "playedMatches": int(len(played)),
+            "topFavorite": teams[seeds[0]]["en"] if seeds else None,
+        },
+    }
+
+    WEB_DIR.mkdir(exist_ok=True)
+    out = WEB_DIR / "wc_data.js"
+    out.write_text("/* GERADO por wc2026.export_web — NÃO editar à mão. */\n"
+                   "window.WC_DATA = " + json.dumps(data, ensure_ascii=False) + ";\n")
+    return out
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--engine", choices=["dixon", "ml"], default="dixon")
+    ap.add_argument("--sims", type=int, default=20000)
+    ap.add_argument("--live", action="store_true")
+    args = ap.parse_args()
+    print(f"Rodando modelo (engine={args.engine}, sims={args.sims:,}, live={args.live})...")
+    out = export(args.engine, args.sims, args.live)
+    size_kb = out.stat().st_size / 1024
+    print(f"Exportado: {out}  ({size_kb:.0f} KB)")
+    import json as J
+    d = J.loads(out.read_text().split("=", 1)[1].rsplit(";", 1)[0])
+    fav = d["meta"]["topFavorite"]
+    print(f"Favorito: {fav}  |  {len(d['teams'])} selecoes, "
+          f"{len(d['bracketSpec']['r32'])} jogos no R32, "
+          f"{d['meta']['playedMatches']} jogos da Copa ja realizados")
+
+
+if __name__ == "__main__":
+    main()

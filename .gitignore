@@ -1,0 +1,14 @@
+# ambiente Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# settings locais do Claude Code (contêm a chave da API-Football — NUNCA commitar)
+.claude/settings.local.json
+
+# cache de dados externos (regenerável via thesportsdb --pull / api_football)
+api_cache/
+
+# macOS
+.DS_Store

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Copa 2026 · Dashboard de Predições</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Semi+Condensed:wght@400;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- dados REAIS gerados pelo modelo (python -m wc2026.export_web) -->
+  <script src="wc_data.js"></script>
+  <!-- camada que monta window.DATA / window.WC a partir do WC_DATA -->
+  <script src="data.js"></script>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="ui.jsx"></script>
+  <script type="text/babel" src="views1.jsx"></script>
+  <script type="text/babel" src="views2.jsx"></script>
+
+  <script type="text/babel">
+    function App() {
+      const [lang, setLang]     = React.useState(() => localStorage.getItem("wc26-lang") || "pt");
+      const [tab,  setTab]      = React.useState(() => localStorage.getItem("wc26-tab")  || "overview");
+      const [jumpTeam, setJump] = React.useState(null);
+      const T = I18N[lang];
+      const meta = (window.DATA && window.DATA.meta) || {};
+
+      function switchLang(l) { setLang(l); localStorage.setItem("wc26-lang", l); }
+      function switchTab(t)  { setTab(t);  localStorage.setItem("wc26-tab",  t); }
+      function handleTeamPick(id) { setJump(id); switchTab("team"); }
+      React.useEffect(() => { if (tab !== "team") setJump(null); }, [tab]);
+
+      const NAV = [
+        { id: "overview", ic: "🏆", label: T.navHero    },
+        { id: "stages",   ic: "⚽", label: T.navStages  },
+        { id: "team",     ic: "🌍", label: T.navTeam    },
+        { id: "compare",  ic: "⚖️", label: T.navCompare },
+        { id: "map",      ic: "📍", label: T.navMap     },
+      ];
+
+      const engineLabel = meta.engine === "ml" ? "ML (boosting + jogadores)" : "Dixon-Coles";
+      const noteBody = (lang === "pt"
+        ? `Probabilidades de ${(meta.sims||0).toLocaleString("pt-BR")} simulações de Monte Carlo (motor ${engineLabel}${meta.live ? " + ajuste ao vivo" : ""}), com o chaveamento oficial da FIFA. ${meta.playedMatches||0} jogos da Copa já entram com placar real.`
+        : `Probabilities from ${(meta.sims||0).toLocaleString("en-US")} Monte Carlo simulations (${engineLabel} engine${meta.live ? " + live adjustment" : ""}), using the official FIFA bracket. ${meta.playedMatches||0} played matches use real scores.`);
+
+      return (
+        <div id="app">
+          <div className="topbrand">
+            <div className="topbrand-inner">
+              <img src="uploads/pasted-1781528101936-0.png" alt="FIFA World Cup 2026" className="brand-logo" />
+              <div className="brand-divider" />
+              <div className="brand-info">
+                <span className="k">FIFA WORLD CUP 2026™</span>
+                <span className="s">
+                  {lang === "pt" ? "Painel de predições · 48 seleções" : "Predictions dashboard · 48 teams"}
+                  <span className="brand-hosts">
+                    <img src="https://flagcdn.com/w40/us.png" alt="USA"    className="flag" />
+                    <img src="https://flagcdn.com/w40/mx.png" alt="Mexico" className="flag" />
+                    <img src="https://flagcdn.com/w40/ca.png" alt="Canada" className="flag" />
+                  </span>
+                </span>
+              </div>
+              <div className="brand-spacer" />
+              <div className="lang">
+                <button className={lang === "pt" ? "on" : ""} onClick={() => switchLang("pt")}>PT</button>
+                <button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>EN</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="topnav">
+            <nav className="nav">
+              {NAV.map(n => (
+                <button key={n.id} className={tab === n.id ? "on" : ""} onClick={() => switchTab(n.id)}>
+                  <span className="ic">{n.ic}</span>{n.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          <main className="app">
+            {tab === "overview" && <HeroView    lang={lang} onPick={handleTeamPick} />}
+            {tab === "stages"   && <StagesView  lang={lang} onTeamPick={handleTeamPick} />}
+            {tab === "team"     && <TeamView    lang={lang} initId={jumpTeam} key={jumpTeam ?? "team"} />}
+            {tab === "compare"  && <CompareView lang={lang} />}
+            {tab === "map"      && <MapView     lang={lang} />}
+
+            <div className="datanote">
+              <span>📊</span>
+              <span><b>{lang === "pt" ? "Dados do modelo." : "Model data."}</b> {noteBody}</span>
+            </div>
+
+            {tab === "overview" && <RoadmapView lang={lang} />}
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
