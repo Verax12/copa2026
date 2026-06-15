@@ -1,0 +1,65 @@
+name: Atualizar previsões
+
+# Roda o pipeline completo na nuvem e republica o dashboard.
+# Disparado manualmente (pela página /atualizar ou pelo botão "Run workflow" do GitHub):
+#   1) baixa os resultados mais recentes (martj42)
+#   2) puxa microestatísticas da fonte gratuita (TheSportsDB)
+#   3) re-roda o modelo com ajuste ao vivo (export_web --live)
+#   4) commita os dados e republica o GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Atualizar base de jogos
+        run: python -m wc2026.data --update
+
+      - name: Buscar microestatísticas (fonte gratuita)
+        run: python -m wc2026.thesportsdb --pull || echo "sem stats novas, seguindo"
+
+      - name: Re-rodar previsões (com ajuste ao vivo)
+        run: python -m wc2026.export_web --live --sims 20000
+
+      - name: Commitar dados atualizados
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nenhuma mudança nos dados."
+          else
+            git commit -m "dados: atualização automática via /atualizar [skip ci]"
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4

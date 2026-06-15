@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Atualizar previsões · Copa 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Semi+Condensed:wght@400;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <style>
+    .upd-wrap { max-width: 620px; margin: 40px auto; padding: 0 18px; }
+    .upd-card { padding: 26px 26px 24px; }
+    .upd-h { font-family: var(--font-display); font-size: 34px; color: var(--brand-black); line-height: 1; margin: 0 0 6px; }
+    .upd-sub { color: var(--text-muted); font-size: 14px; margin: 0 0 22px; line-height: 1.5; }
+    .upd-label { font-family: var(--font-cond); font-weight: 700; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-2); display: block; margin: 0 0 6px; }
+    .upd-input { width: 100%; border: 1.5px solid var(--border-md); border-radius: var(--r-sm); padding: 11px 13px; font-family: var(--font-body); font-size: 14px; }
+    .upd-input:focus { outline: none; border-color: var(--red); }
+    .upd-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    .upd-btn { border: 0; background: var(--brand-black); color: #fff; font-family: var(--font-cond); font-weight: 700; font-size: 15px; letter-spacing: .5px; text-transform: uppercase; padding: 13px 22px; border-radius: var(--r-sm); }
+    .upd-btn:hover { background: var(--red); }
+    .upd-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .upd-ghost { border: 1.5px solid var(--border-md); background: var(--bg-card); color: var(--text); }
+    .upd-ghost:hover { border-color: var(--red); color: var(--red); background: var(--bg-card); }
+    .upd-status { margin-top: 20px; padding: 14px 16px; border-radius: var(--r-sm); background: var(--bg); font-size: 14px; line-height: 1.5; display: none; }
+    .upd-status.show { display: block; }
+    .upd-status.ok { background: var(--teal-light); color: var(--teal-dark); }
+    .upd-status.err { background: var(--red-light); color: var(--red-dark); }
+    .upd-status.run { background: var(--orange-light); color: #7a2800; }
+    .upd-note { margin-top: 20px; font-size: 12px; color: var(--text-muted); line-height: 1.6; border-top: 1px solid var(--border); padding-top: 14px; }
+    .upd-note code { background: rgba(0,0,0,.05); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+    .upd-note a { color: var(--red); }
+    .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sp .7s linear infinite; vertical-align: -2px; margin-right: 7px; }
+    @keyframes sp { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="topnav"><nav class="nav"><button class="on">🔄 Atualizar previsões</button></nav></div>
+  <div class="upd-wrap">
+    <div class="card card-accent upd-card">
+      <div class="eyebrow" style="margin-bottom:8px">Página interna · acesso por URL</div>
+      <h1 class="upd-h">Atualizar previsões</h1>
+      <p class="upd-sub">Roda o pipeline na nuvem (GitHub Actions): baixa os jogos mais recentes, busca as estatísticas e re-roda o modelo. O dashboard republica sozinho em ~2–3 min.</p>
+
+      <label class="upd-label" for="tok">Token do GitHub (fica salvo só neste navegador)</label>
+      <input class="upd-input" id="tok" type="password" placeholder="github_pat_..." autocomplete="off" />
+
+      <div class="upd-row">
+        <button class="upd-btn" id="go">▶ Atualizar agora</button>
+        <button class="upd-btn upd-ghost" id="open" type="button">Abrir dashboard</button>
+        <button class="upd-btn upd-ghost" id="forget" type="button" title="Esquecer o token salvo">Esquecer token</button>
+      </div>
+
+      <div class="upd-status" id="status"></div>
+
+      <div class="upd-note">
+        <b>Como criar o token (uma vez):</b> em
+        <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained tokens</a>,
+        dê acesso <b>apenas ao repositório <code>Verax12/copa2026</code></b> e a permissão
+        <b>Actions: Read and write</b>. Cole aqui — ele fica só no seu navegador (localStorage), nunca no código.
+        Esta página não tem botão no dashboard; só quem sabe a URL chega aqui.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const OWNER = "Verax12", REPO = "copa2026", WF = "update.yml", BRANCH = "main";
+    const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
+    const $ = (id) => document.getElementById(id);
+    const tok = $("tok"), status = $("status");
+
+    // restaura token salvo
+    tok.value = localStorage.getItem("wc26-gh-token") || "";
+
+    function setStatus(msg, kind) {
+      status.className = "upd-status show " + (kind || "");
+      status.innerHTML = msg;
+    }
+    function headers() {
+      return { "Accept": "application/vnd.github+json", "Authorization": "Bearer " + tok.value.trim(),
+               "X-GitHub-Api-Version": "2022-11-28" };
+    }
+
+    $("open").onclick = () => location.href = "../";
+    $("forget").onclick = () => { localStorage.removeItem("wc26-gh-token"); tok.value = ""; setStatus("Token esquecido neste navegador.", ""); };
+
+    $("go").onclick = async () => {
+      const t = tok.value.trim();
+      if (!t) { setStatus("Cole o token do GitHub primeiro.", "err"); return; }
+      localStorage.setItem("wc26-gh-token", t);
+      $("go").disabled = true;
+      setStatus('<span class="spin"></span>Disparando a atualização...', "run");
+      try {
+        const r = await fetch(`${API}/actions/workflows/${WF}/dispatches`, {
+          method: "POST", headers: headers(), body: JSON.stringify({ ref: BRANCH })
+        });
+        if (r.status !== 204) {
+          const txt = await r.text();
+          throw new Error(`HTTP ${r.status} — ${txt || "verifique o token e as permissões"}`);
+        }
+        setStatus('<span class="spin"></span>Atualização iniciada! Acompanhando o progresso...', "run");
+        await poll();
+      } catch (e) {
+        setStatus("Erro ao disparar: " + e.message + "<br>Confira se o token tem permissão <b>Actions: Read and write</b> neste repositório.", "err");
+        $("go").disabled = false;
+      }
+    };
+
+    async function poll() {
+      const started = Date.now();
+      let runUrl = null;
+      for (let i = 0; i < 90; i++) {            // até ~7,5 min
+        await new Promise(r => setTimeout(r, 5000));
+        let run;
+        try {
+          const r = await fetch(`${API}/actions/workflows/${WF}/runs?per_page=1`, { headers: headers() });
+          const j = await r.json();
+          run = (j.workflow_runs || [])[0];
+        } catch (e) { continue; }
+        if (!run) continue;
+        runUrl = run.html_url;
+        const mins = Math.floor((Date.now() - started) / 60000), secs = Math.floor((Date.now() - started) / 1000) % 60;
+        const elapsed = `${mins}m${String(secs).padStart(2, "0")}s`;
+        if (run.status === "completed") {
+          if (run.conclusion === "success") {
+            setStatus(`✅ <b>Pronto!</b> Previsões atualizadas em ${elapsed}. O dashboard já republicou — <a href="../">abra/recarregue aqui</a>. (Pode levar ~1 min extra pro Pages propagar.)`, "ok");
+          } else {
+            setStatus(`❌ A atualização terminou com status "<b>${run.conclusion}</b>". Veja os logs: <a href="${runUrl}" target="_blank" rel="noopener">aqui</a>.`, "err");
+          }
+          $("go").disabled = false;
+          return;
+        }
+        setStatus(`<span class="spin"></span>Rodando o modelo na nuvem... (${run.status}, ${elapsed}) — <a href="${runUrl}" target="_blank" rel="noopener">logs</a>`, "run");
+      }
+      setStatus(`Ainda rodando — acompanhe pelos <a href="${runUrl || (`https://github.com/${OWNER}/${REPO}/actions`)}" target="_blank" rel="noopener">logs do GitHub Actions</a>.`, "run");
+      $("go").disabled = false;
+    }
+  </script>
+</body>
+</html>
