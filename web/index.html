@@ -24,26 +24,29 @@
   <script type="text/babel" src="ui.jsx"></script>
   <script type="text/babel" src="views1.jsx"></script>
   <script type="text/babel" src="views2.jsx"></script>
+  <script type="text/babel" src="views3.jsx"></script>
 
   <script type="text/babel">
     function App() {
       const [lang, setLang]     = React.useState(() => localStorage.getItem("wc26-lang") || "pt");
       const [tab,  setTab]      = React.useState(() => localStorage.getItem("wc26-tab")  || "overview");
       const [jumpTeam, setJump] = React.useState(null);
+      const [matchSel, setMatchSel] = React.useState(null);
       const T = I18N[lang];
       const meta = (window.DATA && window.DATA.meta) || {};
 
       function switchLang(l) { setLang(l); localStorage.setItem("wc26-lang", l); }
       function switchTab(t)  { setTab(t);  localStorage.setItem("wc26-tab",  t); }
       function handleTeamPick(id) { setJump(id); switchTab("team"); }
+      function openMatch(entry) { setMatchSel(entry); setTab("match"); window.scrollTo({ top: 0 }); }
       React.useEffect(() => { if (tab !== "team") setJump(null); }, [tab]);
 
       const NAV = [
         { id: "overview", ic: "🏆", label: T.navHero    },
         { id: "stages",   ic: "⚽", label: T.navStages  },
+        { id: "calendar", ic: "📅", label: lang === "pt" ? "Calendário" : "Calendar" },
         { id: "team",     ic: "🌍", label: T.navTeam    },
         { id: "compare",  ic: "⚖️", label: T.navCompare },
-        { id: "map",      ic: "📍", label: T.navMap     },
       ];
 
       const engineLabel = meta.engine === "ml" ? "ML (boosting + jogadores)"
@@ -90,9 +93,10 @@
           <main className="app">
             {tab === "overview" && <HeroView    lang={lang} onPick={handleTeamPick} />}
             {tab === "stages"   && <StagesView  lang={lang} onTeamPick={handleTeamPick} />}
+            {tab === "calendar" && <CalendarView lang={lang} openMatch={openMatch} />}
+            {tab === "match"    && <MatchDetailView lang={lang} entry={matchSel} back={() => switchTab("calendar")} />}
             {tab === "team"     && <TeamView    lang={lang} initId={jumpTeam} key={jumpTeam ?? "team"} />}
             {tab === "compare"  && <CompareView lang={lang} />}
-            {tab === "map"      && <MapView     lang={lang} />}
 
             <div className="datanote">
               <span>📊</span>

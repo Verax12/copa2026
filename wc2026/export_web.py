@@ -132,6 +132,106 @@ def build_match_stats(idx: dict) -> list[dict]:
     return out
 
 
+# openfootball 'ground' (cidade) -> (cidade exibida, estádio)
+GROUND_TO_STADIUM = {
+    "Atlanta": ("Atlanta", "Mercedes-Benz Stadium"),
+    "Boston (Foxborough)": ("Boston", "Gillette Stadium"),
+    "Dallas (Arlington)": ("Dallas", "AT&T Stadium"),
+    "Guadalajara (Zapopan)": ("Guadalajara", "Estadio Akron"),
+    "Houston": ("Houston", "NRG Stadium"),
+    "Kansas City": ("Kansas City", "Arrowhead Stadium"),
+    "Los Angeles (Inglewood)": ("Los Angeles", "SoFi Stadium"),
+    "Mexico City": ("Cidade do México", "Estadio Azteca"),
+    "Miami (Miami Gardens)": ("Miami", "Hard Rock Stadium"),
+    "Monterrey (Guadalupe)": ("Monterrey", "Estadio BBVA"),
+    "New York/New Jersey (East Rutherford)": ("Nova York / NJ", "MetLife Stadium"),
+    "Philadelphia": ("Filadélfia", "Lincoln Financial Field"),
+    "San Francisco Bay Area (Santa Clara)": ("São Francisco", "Levi's Stadium"),
+    "Seattle": ("Seattle", "Lumen Field"),
+    "Toronto": ("Toronto", "BMO Field"),
+    "Vancouver": ("Vancouver", "BC Place"),
+}
+
+
+def _parse_kickoff(s: str) -> dict:
+    """'13:00 UTC-6' -> hora local + conversão para Brasília (UTC-3)."""
+    out = {"local": "", "offset": "", "br": "", "brShift": 0}
+    if not s:
+        return out
+    parts = s.split()
+    out["local"] = parts[0]
+    if len(parts) > 1:
+        out["offset"] = parts[1]
+    try:
+        h, mi = map(int, parts[0].split(":"))
+        offnum = int(parts[1].replace("UTC", "")) if len(parts) > 1 else 0
+        total = h + (-offnum - 3)          # Brasília = local - offset - 3
+        shift = 0
+        while total >= 24:
+            total -= 24; shift += 1
+        while total < 0:
+            total += 24; shift -= 1
+        out["br"] = f"{total:02d}:{mi:02d}"
+        out["brShift"] = shift
+    except Exception:
+        pass
+    return out
+
+
+def build_calendar(idx: dict, model, played, track_record: dict) -> list[dict]:
+    """Calendário da fase de grupos (openfootball) + previsão de cada jogo.
+    Futuro: previsão do modelo atual. Disputado: resultado real + previsão
+    pré-jogo (honesta, do track record) para o detalhe comparar."""
+    import json as J
+    import numpy as np
+    from .thesportsdb import CACHE
+    from .live_form import normalize_team
+    fp = CACHE / "openfootball_2026.json"
+    if not fp.exists():
+        return []
+    matches = J.loads(fp.read_text()).get("matches", [])
+
+    pre = {}
+    for g in (track_record or {}).get("games", []):
+        pre[frozenset((g["home"], g["away"]))] = g
+
+    cal = []
+    for m in matches:
+        if not str(m.get("group", "")).startswith("Group"):
+            continue
+        h, a = normalize_team(m.get("team1", "")), normalize_team(m.get("team2", ""))
+        if h not in idx or a not in idx:
+            continue
+        M = model.score_matrix(h, a, neutral=True)
+        gi, gj = np.unravel_index(int(M.argmax()), M.shape)
+        ph = float(np.tril(M, -1).sum()); pdr = float(np.trace(M)); pa = float(np.triu(M, 1).sum())
+        lh, la = model.expected_goals(h, a, neutral=True)
+        city, stadium = GROUND_TO_STADIUM.get(m.get("ground", ""), (m.get("ground", ""), ""))
+        ft = (m.get("score") or {}).get("ft")
+        entry = {
+            "date": m.get("date"), "kickoff": _parse_kickoff(m.get("time", "")),
+            "group": m.get("group", "").replace("Group ", ""),
+            "city": city, "stadium": stadium,
+            "home": idx[h], "away": idx[a], "played": ft is not None,
+            "pred": {"ph": round(ph, 3), "pd": round(pdr, 3), "pa": round(pa, 3),
+                     "score": [int(gi), int(gj)], "xg": [round(float(lh), 2), round(float(la), 2)]},
+            "actual": None, "pre": None,
+        }
+        if ft is not None:
+            entry["actual"] = [int(ft[0]), int(ft[1])]
+            g = pre.get(frozenset((h, a)))
+            if g:
+                # orienta a previsão pré-jogo para a ordem (home=h, away=a)
+                flip = g["home"] != h
+                entry["pre"] = {
+                    "ph": g["pa"] if flip else g["ph"], "pd": g["pd"],
+                    "pa": g["ph"] if flip else g["pa"],
+                    "score": [g["predScore"][1], g["predScore"][0]] if flip else g["predScore"],
+                }
+        cal.append(entry)
+    return cal
+
+
 def build_match_dates(idx: dict, played) -> dict:
     """Data (e hora, quando houver) dos jogos. Data vem dos jogos já disputados
     (results.csv); a hora vem do TheSportsDB quando disponível. Jogos futuros e
@@ -306,6 +406,9 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
     from .track import backtest
     track_record = backtest()
 
+    # --- calendário da fase de grupos (datas/horas/estádios + previsão por jogo) ---
+    calendar = build_calendar(idx, model, played, track_record)
+
     data = {
         "teams": teams,
         "groupLabels": group_labels,
@@ -313,6 +416,7 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
         "played": played_rows,
         "matchStats": match_stats,
         "trackRecord": track_record,
+        "calendar": calendar,
         "titleProb": title_prob,
         "finalProb": final_prob,
         "semiProb": semi_prob,

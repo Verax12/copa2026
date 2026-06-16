@@ -174,6 +174,7 @@
     ROUND_KEYS, ROUND_LABEL, ROUND_SHORT,
     GROUP_LABELS: WD.groupLabels,
     trackRecord: WD.trackRecord || null,
+    calendar: WD.calendar || [],
     meta: WD.meta
   };
   // flagcdn só serve larguras fixas — arredonda PARA CIMA para a válida mais próxima
