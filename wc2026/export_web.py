@@ -173,6 +173,9 @@ def build_model(engine: str, live: bool):
         from .ml_model import train, MLGoalModel
         feats = build_features(matches)
         model = MLGoalModel(train(feats), current_state(matches), all_teams())
+    elif engine == "ensemble":
+        from .ensemble import build_ensemble
+        model = build_ensemble(matches, w=0.5)   # blend Dixon-Coles + ML (vence out-of-time)
     else:
         from .goal_model import fit_dixon_coles
         model = fit_dixon_coles(matches)
@@ -338,7 +341,7 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--engine", choices=["dixon", "ml"], default="dixon")
+    ap.add_argument("--engine", choices=["dixon", "ml", "ensemble"], default="ensemble")
     ap.add_argument("--sims", type=int, default=20000)
     ap.add_argument("--live", action="store_true")
     args = ap.parse_args()

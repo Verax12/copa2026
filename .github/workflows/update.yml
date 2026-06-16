@@ -42,8 +42,8 @@ jobs:
       - name: Buscar microestatísticas (fonte gratuita)
         run: python -m wc2026.thesportsdb --pull || echo "sem stats novas, seguindo"
 
-      - name: Re-rodar previsões (com ajuste ao vivo)
-        run: python -m wc2026.export_web --live --sims 200000
+      - name: Re-rodar previsões (ensemble + ajuste ao vivo)
+        run: python -m wc2026.export_web --engine ensemble --live --sims 200000
 
       - name: Commitar dados atualizados
         run: |

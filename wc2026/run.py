@@ -38,7 +38,7 @@ def _show_path(team: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sims", type=int, default=10000)
-    ap.add_argument("--engine", choices=["dixon", "ml"], default="dixon")
+    ap.add_argument("--engine", choices=["dixon", "ml", "ensemble"], default="dixon")
     ap.add_argument("--update", action="store_true")
     ap.add_argument("--live", action="store_true",
                     help="aplica o ajuste de forma ao vivo (dados granulares da "
@@ -73,6 +73,10 @@ def main() -> None:
         goal_ml = train(feats)
         state = current_state(matches)
         model = MLGoalModel(goal_ml, state, all_teams())
+    elif args.engine == "ensemble":
+        print("3/5  Ensemble (Dixon-Coles + ML)...")
+        from .ensemble import build_ensemble
+        model = build_ensemble(matches, w=0.5)
     else:
         print("3/5  Ajustando modelo de gols Dixon-Coles...")
         model = fit_dixon_coles(matches)

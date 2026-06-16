@@ -46,7 +46,8 @@
         { id: "map",      ic: "📍", label: T.navMap     },
       ];
 
-      const engineLabel = meta.engine === "ml" ? "ML (boosting + jogadores)" : "Dixon-Coles";
+      const engineLabel = meta.engine === "ml" ? "ML (boosting + jogadores)"
+        : meta.engine === "ensemble" ? "ensemble (Dixon-Coles + ML)" : "Dixon-Coles";
       const noteBody = (lang === "pt"
         ? `Probabilidades de ${(meta.sims||0).toLocaleString("pt-BR")} simulações de Monte Carlo (motor ${engineLabel}${meta.live ? " + ajuste ao vivo" : ""}), com o chaveamento oficial da FIFA. ${meta.playedMatches||0} jogos da Copa já entram com placar real.`
         : `Probabilities from ${(meta.sims||0).toLocaleString("en-US")} Monte Carlo simulations (${engineLabel} engine${meta.live ? " + live adjustment" : ""}), using the official FIFA bracket. ${meta.playedMatches||0} played matches use real scores.`);
