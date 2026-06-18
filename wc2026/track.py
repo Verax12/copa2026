@@ -50,10 +50,12 @@ def backtest(cutoff: str = CUP_START) -> dict:
 
         actual = _outcome(r.home_score, r.away_score)
         probs = [ph, pd_, pa]
-        pred = int(np.argmax(probs))
+        # "acerto do resultado" = resultado (V/E/D) do PLACAR PREVISTO (a moda exibida)
+        # vs o real — coerente com o que o painel mostra ("prev. X-Y").
+        pred = _outcome(int(gi), int(gj))
         I = [0, 0, 0]; I[actual] = 1
 
-        # baseline Elo
+        # baseline Elo (pela probabilidade, só como referência)
         eh = elo.get(r.home_team, BASE_RATING) + (0 if neutral else HOME_ADVANTAGE)
         ea = elo.get(r.away_team, BASE_RATING)
         eprobs = list(win_probabilities(eh, ea))

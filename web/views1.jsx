@@ -88,7 +88,7 @@ function TrackRecord({ lang }) {
 
       {open && (
         <div style={{ marginTop: "14px", display: "grid", gap: "6px" }}>
-          {tr.games.map((g, i) => (
+          {[...tr.games].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map((g, i) => (
             <div key={i} className="card" style={{ display: "grid", gridTemplateColumns: "26px 1fr auto", alignItems: "center", gap: "10px", padding: "9px 13px" }}>
               <span style={{ fontSize: "15px" }}>{g.winnerHit ? "✅" : "❌"}</span>
               <span style={{ fontFamily: "var(--font-cond)", fontSize: "13.5px", color: "var(--text-2)" }}>
