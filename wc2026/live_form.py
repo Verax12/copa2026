@@ -92,6 +92,7 @@ NAME_MAP_API_TO_DATASET = {
     "Bosnia": "Bosnia and Herzegovina",
     "Bosnia & Herzegovina": "Bosnia and Herzegovina",
     "Bosnia-Herzegovina": "Bosnia and Herzegovina",  # grafia do TheSportsDB
+    "Curacao": "Curaçao",                              # Flashscore (sem cedilha)
 }
 
 

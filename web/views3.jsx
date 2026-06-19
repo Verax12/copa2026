@@ -157,7 +157,7 @@ function MatchDetailView({ lang, entry, back }) {
           {stats ? (
             <div className="card md-block">
               <div className="eyebrow">{pt ? "Estatísticas do jogo" : "Match stats"} · {stats.source}</div>
-              <div className="ms-hd"><span>{WC.name(entry.home, lang)}</span><span className="ms-src">{pt ? "finalizações" : "shots"}</span><span>{WC.name(entry.away, lang)}</span></div>
+              <div className="ms-hd"><span>{WC.name(entry.home, lang)}</span><span className="ms-src">×</span><span>{WC.name(entry.away, lang)}</span></div>
               {stats.stats.map((s, j) => {
                 const tot = (s.you + s.them) || 1;
                 return (

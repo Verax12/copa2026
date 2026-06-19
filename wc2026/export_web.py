@@ -129,7 +129,16 @@ def build_match_stats(idx: dict) -> list[dict]:
                               "away": _to_float(smap[key].get("intAway"))})
         if stats:
             out.append({"h": idx[h], "a": idx[a], "stats": stats, "src": "TheSportsDB"})
-    return out
+
+    # Flashscore (local, mais rico: posse/escanteios/cartões) tem prioridade por jogo
+    by_pair = {frozenset((r["h"], r["a"])): r for r in out}
+    try:
+        from . import flashscore
+        for r in flashscore.match_stats_rows(idx):
+            by_pair[frozenset((r["h"], r["a"]))] = r   # sobrepõe o TheSportsDB
+    except Exception:
+        pass
+    return list(by_pair.values())
 
 
 # openfootball 'ground' (cidade) -> (cidade exibida, estádio)

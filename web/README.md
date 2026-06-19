@@ -46,3 +46,21 @@ Para atualizar durante a Copa: `python -m wc2026.data --update` →
 - Bandeiras vêm do flagcdn.com (online). O resto é local.
 - O aviso "in-browser Babel transformer" no console é esperado (uso local); para
   produção, dá para pré-compilar os `.jsx`.
+
+## Estatísticas ricas dos jogos (opcional, via Flashscore — local)
+
+A página de detalhe do jogo mostra microestatísticas. As finalizações vêm do
+TheSportsDB (grátis, HTTP). Para ter **posse, escanteios e cartões**, use o
+scraper do Flashscore (passo **local**, não entra no `/atualizar` da nuvem):
+
+```bash
+# 1) rode o scraper (github.com/gustavofariaa/FlashscoreScraping) para a Copa,
+#    exportando JSON. 2) salve o arquivo aqui:
+#       api_cache/flashscore.json
+# 3) regenere:
+python -m wc2026.flashscore        # confere o que foi lido
+python -m wc2026.export_web --engine ensemble --live   # publica no painel
+```
+
+O `flashscore.py` só LÊ o JSON (sem navegador, sem dependência nova). Quando há
+dados do Flashscore para um jogo, eles têm prioridade sobre o TheSportsDB.
