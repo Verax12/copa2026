@@ -12,10 +12,16 @@
 <body>
   <div id="root"></div>
 
-  <!-- dados REAIS gerados pelo modelo (python -m wc2026.export_web) -->
-  <script src="wc_data.js"></script>
-  <!-- camada que monta window.DATA / window.WC a partir do WC_DATA -->
-  <script src="data.js"></script>
+  <!-- dados REAIS do modelo + camada window.DATA. Carregados com cache-bust
+       (?t=timestamp) para a reload SEMPRE pegar a versão mais recente após o
+       /atualizar — senão o GitHub Pages/navegador serviria a versão em cache. -->
+  <script>
+    (function () {
+      var t = Date.now();
+      document.write('<scr' + 'ipt src="wc_data.js?t=' + t + '"><\/scr' + 'ipt>');
+      document.write('<scr' + 'ipt src="data.js?t=' + t + '"><\/scr' + 'ipt>');
+    })();
+  </script>
 
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
