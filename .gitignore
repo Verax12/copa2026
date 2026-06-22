@@ -12,3 +12,7 @@ api_cache/
 
 # macOS
 .DS_Store
+
+# handoff com segredos — NUNCA commitar (repo é público)
+HANDOFF.md
+SECRETS*.md
