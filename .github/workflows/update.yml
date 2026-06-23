@@ -1,14 +1,21 @@
 name: Atualizar previsões
 
 # Roda o pipeline completo na nuvem e republica o dashboard.
-# Disparado manualmente (pela página /atualizar ou pelo botão "Run workflow" do GitHub):
-#   1) baixa os resultados mais recentes (martj42)
-#   2) puxa microestatísticas da fonte gratuita (TheSportsDB)
-#   3) re-roda o modelo com ajuste ao vivo (export_web --live)
+# Disparado de 3 formas:
+#   - automático: todo dia às 06:00 UTC (= 03:00 de Brasília)
+#   - manual: pela página /atualizar ou pelo botão "Run workflow" do GitHub
+# Passos:
+#   1) baixa os resultados mais recentes (martj42 + openfootball)
+#   2) puxa microestatísticas (TheSportsDB)
+#   3) re-roda o modelo (ensemble) e gera web/wc_data.js
 #   4) commita os dados e republica o GitHub Pages
 
 on:
   workflow_dispatch:
+  schedule:
+    # 06:00 UTC = 03:00 Brasília (UTC-3). Cron do GitHub roda sempre em UTC.
+    # Obs.: o GitHub pode atrasar alguns minutos em horários de pico.
+    - cron: "0 6 * * *"
 
 permissions:
   contents: write
