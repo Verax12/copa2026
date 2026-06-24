@@ -10,6 +10,7 @@ gerado pelo modelo.
 # 1) gerar os dados reais a partir do modelo (cria web/wc_data.js)
 python -m wc2026.export_web                      # Dixon-Coles, 20k sims
 python -m wc2026.export_web --engine ml --live   # opções: motor de ML + ajuste ao vivo
+scripts/generate_web_data.sh                     # padrão do projeto: ensemble, 200k sims
 
 # 2) servir (precisa de HTTP — o Babel carrega os .jsx via fetch)
 python -m http.server 8765 --directory web
@@ -39,7 +40,19 @@ bracket oficial) e grava `web/wc_data.js` (`window.WC_DATA`). O `data.js` monta
 
 Para atualizar durante a Copa: `python -m wc2026.data --update` →
 `python -m wc2026.thesportsdb --pull` (opcional, p/ `--live`) →
-`python -m wc2026.export_web ...` → recarregue a página.
+`scripts/generate_web_data.sh` → recarregue a página.
+
+## Deep links úteis
+
+O painel aceita URLs compartilháveis:
+
+- `#/calendario` ou `#/calendario?team=brasil&group=C`
+- `#/selecao/brasil`
+- `#/comparador/brasil/argentina`
+- `#/jogo/2026-06-13-brazil-vs-morocco`
+
+Os filtros do calendário (status, seleção, grupo e estádio/cidade) ficam na URL,
+então dá para compartilhar uma visão específica.
 
 ## Notas
 

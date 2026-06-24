@@ -120,13 +120,14 @@ python -m wc2026.prediction_test  # backtest pré-Copa vs jogos reais atuais
 Painel visual (design FIFA 2026) ligado aos dados reais do modelo, em `web/`:
 
 ```bash
-python -m wc2026.export_web        # gera web/wc_data.js a partir do modelo
+scripts/generate_web_data.sh       # gera web/wc_data.js (ensemble, 200k sims)
 python -m http.server 8765 --directory web   # abra http://127.0.0.1:8765
 # ou: ./web/serve.sh
 ```
 
 5 abas: visão geral (termômetro de título), etapas (grupos + bracket oficial
-interativo), por seleção, comparador e sedes. Detalhes em [web/README.md](web/README.md).
+interativo), calendário com filtros/deep links, por seleção e comparador.
+Detalhes em [web/README.md](web/README.md).
 
 ## Limitações e próximos passos
 

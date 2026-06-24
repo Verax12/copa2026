@@ -1,7 +1,7 @@
 /* ===== views2.jsx — Por Seleção + Comparador (light, FIFA brand) ===== */
 
 /* ========== POR SELEÇÃO ========== */
-function TeamView({ lang, initId, openPair }) {
+function TeamView({ lang, initId, openPair, onTeamRoute }) {
   const T = I18N[lang];
   const finish   = useMemo(() => D.computeFinish(D.baseBracket), []);
   const [id, setId] = useState(initId != null ? initId : null);
@@ -51,7 +51,7 @@ function TeamView({ lang, initId, openPair }) {
         </div>
         <div className="flag-grid">
           {filtered.map(t => (
-            <button key={t.id} className="flag-cell" onClick={() => setId(t.id)}>
+            <button key={t.id} className="flag-cell" onClick={() => (onTeamRoute ? onTeamRoute(t.id) : setId(t.id))}>
               <img className="flag" src={WC.flag(t.iso, 160)}
                    srcSet={WC.flag(t.iso, 160) + " 1x, " + WC.flag(t.iso, 320) + " 2x"} alt={t.en} loading="lazy" />
               <span className="fc-name">{WC.name(t.id, lang)}</span>
@@ -98,9 +98,13 @@ function TeamView({ lang, initId, openPair }) {
   return (
     <div className="fade-in">
       <div className="team-topbar">
-        <button className="btn" onClick={() => setId(null)}>← {lang === "pt" ? "Todas as seleções" : "All teams"}</button>
+        <button className="btn" onClick={() => (onTeamRoute ? onTeamRoute(null) : setId(null))}>← {lang === "pt" ? "Todas as seleções" : "All teams"}</button>
         <div className="select-wrap">
-          <select className="tsel" value={id} onChange={e => setId(Number(e.target.value))}>
+          <select className="tsel" value={id} onChange={e => {
+            const next = Number(e.target.value);
+            if (onTeamRoute) onTeamRoute(next);
+            else setId(next);
+          }}>
             {sortedTeams.map(t => (<option key={t.id} value={t.id}>{WC.name(t.id, lang)}</option>))}
           </select>
         </div>
@@ -193,18 +197,31 @@ function TeamView({ lang, initId, openPair }) {
 }
 
 /* ========== COMPARADOR ========== */
-function CompareView({ lang, openPair }) {
+function CompareView({ lang, openPair, initPair, onCompareRoute }) {
   const T = I18N[lang];
   const sortedTeams = useMemo(() =>
     [...D.teams].sort((a, b) => WC.name(a.id, lang).localeCompare(WC.name(b.id, lang))), [lang]);
 
-  const [aId, setAId] = useState(D.seeds[0]);
-  const [bId, setBId] = useState(D.seeds[1]);
+  const [aId, setAId] = useState(initPair?.aId ?? D.seeds[0]);
+  const [bId, setBId] = useState(initPair?.bId ?? D.seeds[1]);
+  useEffect(() => {
+    if (initPair?.aId != null && initPair.aId !== aId) setAId(initPair.aId);
+    if (initPair?.bId != null && initPair.bId !== bId) setBId(initPair.bId);
+  }, [initPair?.aId, initPair?.bId]);
   const finish = useMemo(() => D.computeFinish(D.baseBracket), []);
   const finishOrder = ["GROUP","R32","R16","QF","SF","F","CHAMP"];
   const finishRank  = (id) => finishOrder.indexOf(finish[id]);
 
   const aT = D.byId(aId), bT = D.byId(bId);
+
+  function pickA(next) {
+    setAId(next);
+    if (onCompareRoute) onCompareRoute(next, bId);
+  }
+  function pickB(next) {
+    setBId(next);
+    if (onCompareRoute) onCompareRoute(aId, next);
+  }
 
   const METRICS = [
     { key: "title",  label: T.metricTitle,    a: D.titleProb[aId],  b: D.titleProb[bId],  fmt: v => v.toFixed(1) + "%", max: null },
@@ -255,14 +272,14 @@ function CompareView({ lang, openPair }) {
           <Flag id={aId} w={96} />
           <div className="nm">{WC.name(aId, lang)}</div>
           <span className="pill red">{lang === "pt" ? "Grupo" : "Group"} {D.groups[aT.groupId].label}</span>
-          <TeamSel value={aId} onChange={setAId} excludeId={bId} />
+          <TeamSel value={aId} onChange={pickA} excludeId={bId} />
         </div>
         <div className="cmp-head-vs">VS</div>
         <div className="cmp-head-side b">
           <Flag id={bId} w={96} />
           <div className="nm">{WC.name(bId, lang)}</div>
           <span className="pill purple">{lang === "pt" ? "Grupo" : "Group"} {D.groups[bT.groupId].label}</span>
-          <TeamSel value={bId} onChange={setBId} excludeId={aId} />
+          <TeamSel value={bId} onChange={pickB} excludeId={aId} />
         </div>
       </div>
 

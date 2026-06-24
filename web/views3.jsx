@@ -32,8 +32,17 @@ function WDLBar({ ph, pd, pa, lang }) {
   );
 }
 
+function venueKey(g) {
+  return D.slug((g.city || "") + "-" + (g.stadium || ""));
+}
+function normalizeTeamFilter(v) {
+  if (!v || v === "all") return "all";
+  const id = D.teamFromKey(v);
+  return id == null ? "all" : D.teamSlug(id, "en");
+}
+
 /* ---------- CALENDÁRIO (grade de cards por dia) ---------- */
-function CalendarView({ lang, openMatch }) {
+function CalendarView({ lang, openMatch, initFilters, onRouteChange }) {
   const pt = lang === "pt";
   const days = useMemo(() => {
     const by = {};
@@ -44,8 +53,22 @@ function CalendarView({ lang, openMatch }) {
     }));
   }, []);
 
-  const [filter, setFilter] = useState("all");   // all | played | upcoming
-  if (!days.length) return <div className="datanote">Sem calendário disponível.</div>;
+  const [filters, setFilters] = useState(() => ({
+    status: initFilters?.status || "all",
+    team: normalizeTeamFilter(initFilters?.team),
+    group: initFilters?.group || "all",
+    venue: initFilters?.venue || "all",
+    date: initFilters?.date || "",
+  }));
+  useEffect(() => {
+    setFilters(f => ({
+      status: initFilters?.status || "all",
+      team: normalizeTeamFilter(initFilters?.team),
+      group: initFilters?.group || "all",
+      venue: initFilters?.venue || "all",
+      date: initFilters?.date || f.date || "",
+    }));
+  }, [initFilters?.status, initFilters?.team, initFilters?.group, initFilters?.venue, initFilters?.date]);
 
   // Ao abrir a aba Calendário, rola direto para o dia atual. Se não houver
   // jogos exatamente hoje, usa o próximo dia do calendário; se a Copa já passou,
@@ -58,14 +81,17 @@ function CalendarView({ lang, openMatch }) {
     return `${y}-${m}-${d}`;
   }, []);
   const targetDate = useMemo(() => {
+    if (!days.length) return "";
+    if (filters.date && days.some(d => d.date === filters.date)) return filters.date;
     if (days.some(d => d.date === todayIso)) return todayIso;
     const next = days.find(d => d.date >= todayIso);
     return next ? next.date : days[days.length - 1].date;
-  }, [days, todayIso]);
+  }, [days, todayIso, filters.date]);
   const exactToday = targetDate === todayIso;
-  const targetFmt = fmtDate(targetDate, lang);
+  const targetFmt = targetDate ? fmtDate(targetDate, lang) : null;
 
   function scrollToCurrentDay(behavior) {
+    if (!targetDate) return;
     const el = document.querySelector(`[data-cal-date="${targetDate}"]`);
     if (el) el.scrollIntoView({ behavior: behavior || "smooth", block: "start" });
   }
@@ -77,10 +103,45 @@ function CalendarView({ lang, openMatch }) {
 
   const total = (D.calendar || []).length;
   const playedN = (D.calendar || []).filter(g => g.played).length;
+  const upcomingN = total - playedN;
+
+  const sortedTeams = useMemo(() =>
+    [...D.teams].sort((a, b) => WC.name(a.id, lang).localeCompare(WC.name(b.id, lang))), [lang]);
+  const venueOptions = useMemo(() => {
+    const map = {};
+    (D.calendar || []).forEach(g => { map[venueKey(g)] = { key: venueKey(g), label: `${g.city || g.stadium} · ${g.stadium}` }; });
+    return Object.values(map).sort((a, b) => a.label.localeCompare(b.label));
+  }, []);
+
+  function updateFilter(key, value) {
+    const next = { ...filters, [key]: value };
+    // ao trocar filtros, volta para o alvo dinâmico (hoje/próximo dia), exceto
+    // se o usuário clicou explicitamente no botão de data.
+    if (key !== "date") next.date = "";
+    setFilters(next);
+    if (onRouteChange) onRouteChange(next);
+  }
+  function clearFilters() {
+    const next = { status: "all", team: "all", group: "all", venue: "all", date: "" };
+    setFilters(next);
+    if (onRouteChange) onRouteChange(next);
+  }
 
   const filtered = days
-    .map(day => ({ ...day, games: day.games.filter(g => filter === "all" ? true : filter === "played" ? g.played : !g.played) }))
+    .map(day => ({ ...day, games: day.games.filter(g => {
+      if (filters.status !== "all" && (filters.status === "played") !== !!g.played) return false;
+      if (filters.team !== "all") {
+        const tid = D.teamFromKey(filters.team);
+        if (tid == null || (g.home !== tid && g.away !== tid)) return false;
+      }
+      if (filters.group !== "all" && g.group !== filters.group) return false;
+      if (filters.venue !== "all" && venueKey(g) !== filters.venue) return false;
+      return true;
+    }) }))
     .filter(day => day.games.length);
+  const filteredN = filtered.reduce((s, d) => s + d.games.length, 0);
+
+  if (!days.length) return <div className="datanote">Sem calendário disponível.</div>;
 
   return (
     <div className="fade-in">
@@ -90,19 +151,49 @@ function CalendarView({ lang, openMatch }) {
           <h2>{pt ? "Calendário" : "Calendar"}</h2>
           <p>{pt ? "Clique em qualquer jogo para abrir os detalhes (escalação de gols, estatísticas e previsão) sem sair desta página."
                  : "Click any game to open its details (goals, stats and prediction) without leaving this page."}</p>
-          <button className="btn cal-today-btn" onClick={() => scrollToCurrentDay("smooth")}>
-            📍 {exactToday ? (pt ? "Hoje" : "Today") : (pt ? "Próximo dia" : "Next matchday")}: {targetFmt.dd} {targetFmt.moLong}
-          </button>
+          {targetFmt && (
+            <button className="btn cal-today-btn" onClick={() => scrollToCurrentDay("smooth")}>
+              📍 {exactToday ? (pt ? "Hoje" : "Today") : (pt ? "Próximo dia" : "Next matchday")}: {targetFmt.dd} {targetFmt.moLong}
+            </button>
+          )}
         </div>
         <div className="cal-filter">
-          <button className={"chip" + (filter === "all" ? " on" : "")} onClick={() => setFilter("all")}>{pt ? "Todos" : "All"} <b>{total}</b></button>
-          <button className={"chip" + (filter === "played" ? " on" : "")} onClick={() => setFilter("played")}>{pt ? "Realizados" : "Played"} <b>{playedN}</b></button>
-          <button className={"chip" + (filter === "upcoming" ? " on" : "")} onClick={() => setFilter("upcoming")}>{pt ? "A jogar" : "Upcoming"} <b>{total - playedN}</b></button>
+          <button className={"chip" + (filters.status === "all" ? " on" : "")} onClick={() => updateFilter("status", "all")}>{pt ? "Todos" : "All"} <b>{total}</b></button>
+          <button className={"chip" + (filters.status === "played" ? " on" : "")} onClick={() => updateFilter("status", "played")}>{pt ? "Realizados" : "Played"} <b>{playedN}</b></button>
+          <button className={"chip" + (filters.status === "upcoming" ? " on" : "")} onClick={() => updateFilter("status", "upcoming")}>{pt ? "A jogar" : "Upcoming"} <b>{upcomingN}</b></button>
+        </div>
+      </div>
+
+      <div className="cal-advanced card">
+        <div className="cal-adv-title">{pt ? "Filtros rápidos" : "Quick filters"} <span>{filteredN}/{total} {pt ? "jogos" : "games"}</span></div>
+        <div className="cal-controls">
+          <label>
+            <span>{pt ? "Seleção" : "Team"}</span>
+            <select value={filters.team} onChange={e => updateFilter("team", e.target.value)}>
+              <option value="all">{pt ? "Todas" : "All"}</option>
+              {sortedTeams.map(t => <option key={t.id} value={D.teamSlug(t.id, "en")}>{WC.name(t.id, lang)}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>{pt ? "Grupo" : "Group"}</span>
+            <select value={filters.group} onChange={e => updateFilter("group", e.target.value)}>
+              <option value="all">{pt ? "Todos" : "All"}</option>
+              {D.GROUP_LABELS.map(g => <option key={g} value={g}>{pt ? "Grupo" : "Group"} {g}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>{pt ? "Estádio / cidade" : "Venue / city"}</span>
+            <select value={filters.venue} onChange={e => updateFilter("venue", e.target.value)}>
+              <option value="all">{pt ? "Todos" : "All"}</option>
+              {venueOptions.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
+            </select>
+          </label>
+          <button className="btn cal-clear" onClick={clearFilters}>{pt ? "Limpar" : "Clear"}</button>
         </div>
       </div>
 
       <div className="cal-days">
-        {filtered.map(day => {
+        {filtered.length ? filtered.map(day => {
           const f = fmtDate(day.date, lang);
           const isTarget = day.date === targetDate;
           return (
@@ -124,7 +215,9 @@ function CalendarView({ lang, openMatch }) {
               </div>
             </div>
           );
-        })}
+        }) : (
+          <div className="datanote"><span>🔎</span><span>{pt ? "Nenhum jogo encontrado com os filtros atuais." : "No games found with the current filters."}</span></div>
+        )}
       </div>
     </div>
   );

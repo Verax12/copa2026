@@ -32,6 +32,33 @@
   const teams = WD.teams;
   const byId = (id) => teams[id];
 
+  // ---- slugs estáveis para deep links --------------------------------
+  function slug(s) {
+    return String(s == null ? "" : s)
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+  const teamKeys = {};
+  teams.forEach(t => {
+    [t.id, t.en, t.pt, slug(t.en), slug(t.pt)].forEach(k => {
+      if (k != null && String(k).length) teamKeys[String(k).toLowerCase()] = t.id;
+    });
+  });
+  function teamSlug(id, lang) {
+    const t = byId(Number(id));
+    return t ? slug(lang === "pt" ? t.pt : t.en) : "";
+  }
+  function teamFromKey(key) {
+    if (key == null) return null;
+    const raw = decodeURIComponent(String(key)).trim();
+    if (!raw) return null;
+    if (/^\d+$/.test(raw) && teams[Number(raw)]) return Number(raw);
+    return teamKeys[raw.toLowerCase()] ?? teamKeys[slug(raw)] ?? null;
+  }
+
   // ---- groups: anexa referência rápida ------------------------------
   const groups = WD.groups;
 
@@ -155,6 +182,26 @@
   function calendarEntry(aId, bId) {
     return calByPair[aId + "-" + bId] || null;
   }
+  function matchSlug(entry) {
+    if (!entry) return "";
+    const h = byId(entry.home), a = byId(entry.away);
+    return `${entry.date}-${slug(h.en)}-vs-${slug(a.en)}`;
+  }
+  function matchFromKey(key) {
+    const raw = decodeURIComponent(String(key || "")).toLowerCase();
+    if (!raw) return null;
+    const exact = (WD.calendar || []).find(c => matchSlug(c) === raw);
+    if (exact) return exact;
+    // fallback: permite /jogo/brasil-vs-marrocos ou com nomes em PT
+    return (WD.calendar || []).find(c => {
+      const h = byId(c.home), a = byId(c.away);
+      const variants = [
+        `${slug(h.en)}-vs-${slug(a.en)}`, `${slug(h.pt)}-vs-${slug(a.pt)}`,
+        `${slug(a.en)}-vs-${slug(h.en)}`, `${slug(a.pt)}-vs-${slug(h.pt)}`,
+      ];
+      return variants.includes(raw) || raw.includes(`${slug(h.en)}-vs-${slug(a.en)}`) || raw.includes(`${slug(h.pt)}-vs-${slug(a.pt)}`);
+    }) || null;
+  }
 
   // ---- rótulos de rodada (corrigidos p/ Copa de 48 / 32 no mata-mata)-
   const ROUND_LABEL = {
@@ -183,7 +230,7 @@
     titleProb: WD.titleProb,
     finalProb: WD.finalProb, semiProb: WD.semiProb, advProb: WD.advProb,
     baseBracket, buildBracket, computeFinish, groupMatchesFor, getMatchStats, predScore, byId,
-    calendarEntry,
+    slug, teamSlug, teamFromKey, matchSlug, matchFromKey, calendarEntry,
     ROUND_KEYS, ROUND_LABEL, ROUND_SHORT,
     GROUP_LABELS: WD.groupLabels,
     trackRecord: WD.trackRecord || null,
