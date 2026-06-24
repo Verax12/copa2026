@@ -268,6 +268,36 @@ function GoalsList({ goals, align }) {
   );
 }
 
+/* minuto "90+4" -> número ordenável */
+function minToNum(min) {
+  const mm = String(min || "").replace("'", "").split("+");
+  const a = parseInt(mm[0], 10);
+  return isNaN(a) ? 9999 : a * 100 + (mm[1] ? parseInt(mm[1], 10) || 0 : 0);
+}
+
+/* linha do tempo dos gols (mandante à esquerda, visitante à direita) */
+function GoalsTimeline({ entry, lang }) {
+  const g = entry.goals;
+  if (!g || (!(g.home || []).length && !(g.away || []).length)) return null;
+  const pt = lang === "pt";
+  const events = [
+    ...(g.home || []).map(x => ({ ...x, side: "home" })),
+    ...(g.away || []).map(x => ({ ...x, side: "away" })),
+  ].sort((a, b) => minToNum(a.minute) - minToNum(b.minute));
+  const label = (e) => `${e.name}${e.penalty ? " (P)" : ""}${e.owngoal ? (pt ? " (contra)" : " (OG)") : ""}`;
+  return (
+    <div className="mm-timeline" aria-label={pt ? "Gols do jogo" : "Match goals"}>
+      {events.map((e, i) => (
+        <div key={i} className={"tl-row " + e.side}>
+          <span className="tl-cell left">{e.side === "home" && <span className="tl-goal">⚽ {label(e)}</span>}</span>
+          <span className="tl-min">{e.minute}'</span>
+          <span className="tl-cell right">{e.side === "away" && <span className="tl-goal">{label(e)} ⚽</span>}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ---------- MODAL DE DETALHE / PREVISÃO DE UM JOGO ---------- */
 function MatchModal({ lang, entry, onClose }) {
   const pt = lang === "pt";
@@ -290,11 +320,14 @@ function MatchModal({ lang, entry, onClose }) {
   return (
     <Modal open={open} onClose={onClose} labelledBy="mm-title" initialFocusSelector=".mm-close">
       <div className="mm-bar">
-        <span className="mm-comp">{pt ? "Copa do Mundo 2026" : "World Cup 2026"} · {pt ? "Grupo" : "Group"} {entry.group}</span>
+        <span className="mm-comp">{pt ? "Copa do Mundo 2026" : "World Cup 2026"} · {pt ? "Grupo" : "Group"} {entry.group}{entry.round ? " · " + entry.round : ""}{entry.num ? " · #" + entry.num : ""}</span>
         <button className="mm-close" onClick={onClose} aria-label={pt ? "Fechar" : "Close"}>✕</button>
       </div>
 
       <div className="mm-body">
+        {/* poster/thumbnail do jogo (quando a fonte fornece) */}
+        {entry.thumb ? <img className="mm-poster" src={entry.thumb} alt="" loading="lazy" /> : null}
+
         {/* placar / confronto */}
         <div className="mm-score" id="mm-title">
           <div className="mm-team">
@@ -317,14 +350,8 @@ function MatchModal({ lang, entry, onClose }) {
           </div>
         </div>
 
-        {/* gols marcados */}
-        {entry.played && goals && (goals.home.length || goals.away.length) ? (
-          <div className="mm-goals">
-            <GoalsList goals={goals.home} align="left" />
-            <span className="mm-goals-ic">⚽</span>
-            <GoalsList goals={goals.away} align="right" />
-          </div>
-        ) : null}
+        {/* linha do tempo dos gols */}
+        {entry.played ? <GoalsTimeline entry={entry} lang={lang} /> : null}
 
         {/* info do jogo */}
         <div className="mm-info">
@@ -381,6 +408,16 @@ function MatchModal({ lang, entry, onClose }) {
               <div className="md-xg"><div className="lb">{pt ? "gols esperados (xG)" : "expected goals (xG)"}</div><div className="v">{entry.pred.xg[0]} – {entry.pred.xg[1]}</div></div>
             </div>
             <WDLBar ph={entry.pred.ph} pd={entry.pred.pd} pa={entry.pred.pa} lang={lang} />
+            {entry.pred.top && entry.pred.top.length ? (
+              <div className="mm-top">
+                <div className="mm-top-lbl">{pt ? "Placares mais prováveis" : "Most likely scorelines"}</div>
+                <div className="mm-top-row">
+                  {entry.pred.top.map((t, i) => (
+                    <span key={i} className="mm-top-chip"><b>{t[0]}–{t[1]}</b> {Math.round(t[2] * 100)}%</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="md-note">{pt ? "Placar mais provável segundo o modelo (ensemble). Empate alto é comum — veja as probabilidades acima."
                                          : "Most likely scoreline per the (ensemble) model. Draws are common — see probabilities above."}</div>
           </div>

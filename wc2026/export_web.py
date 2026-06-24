@@ -249,16 +249,22 @@ def build_calendar(idx: dict, model, played, track_record: dict) -> list[dict]:
         gi, gj = np.unravel_index(int(M.argmax()), M.shape)
         ph = float(np.tril(M, -1).sum()); pdr = float(np.trace(M)); pa = float(np.triu(M, 1).sum())
         lh, la = model.expected_goals(h, a, neutral=True)
+        # top 3 placares mais prováveis (para o modal de jogo futuro)
+        flat = M.ravel()
+        topk = np.argsort(flat)[::-1][:3]
+        top = [[int(k // M.shape[1]), int(k % M.shape[1]), round(float(flat[k]), 3)] for k in topk]
         city, stadium = GROUND_TO_STADIUM.get(m.get("ground", ""), (m.get("ground", ""), ""))
         ft = (m.get("score") or {}).get("ft")
         media = tsdb.get(frozenset((h, a)), {})
         entry = {
             "date": m.get("date"), "kickoff": _parse_kickoff(m.get("time", "")),
             "group": m.get("group", "").replace("Group ", ""),
+            "round": m.get("round", ""), "num": m.get("num"),
             "city": city, "stadium": stadium,
             "home": idx[h], "away": idx[a], "played": ft is not None,
             "pred": {"ph": round(ph, 3), "pd": round(pdr, 3), "pa": round(pa, 3),
-                     "score": [int(gi), int(gj)], "xg": [round(float(lh), 2), round(float(la), 2)]},
+                     "score": [int(gi), int(gj)], "xg": [round(float(lh), 2), round(float(la), 2)],
+                     "top": top},
             "actual": None, "pre": None,
             "video": media.get("video", ""), "thumb": media.get("thumb", ""),
         }
