@@ -30,7 +30,7 @@ function ChampionHero({ lang, onPick }) {
         <h1 className="cb-title">{T.heroTitle}</h1>
         <p className="cb-sub">{T.heroSub}</p>
 
-        <div className="cb-champ" onClick={() => onPick(champId)} title={lang === "pt" ? "Ver caminho da seleção" : "See team path"}>
+        <div className="cb-champ" {...clickable(() => onPick(champId), WC.name(champId, lang))} title={lang === "pt" ? "Ver caminho da seleção" : "See team path"}>
           <span className="cb-trophy">🏆</span>
           <Flag id={champId} w={84} />
           <div className="cb-meta">
@@ -46,7 +46,7 @@ function ChampionHero({ lang, onPick }) {
         {/* vice + terceiro logo abaixo do campeão */}
         <div className="cb-runners">
           {ranked.slice(1).map((r, i) => (
-            <div key={r.id} className="cb-runner" onClick={() => onPick(r.id)}>
+            <div key={r.id} className="cb-runner" {...clickable(() => onPick(r.id), WC.name(r.id, lang))}>
               <span className="medal">{i === 0 ? "🥈" : "🥉"}</span>
               <Flag id={r.id} w={40} />
               <span className="nm">{WC.name(r.id, lang)}</span>
@@ -75,7 +75,7 @@ function Thermometer({ lang, onPick }) {
       </div>
       <div className="thermo-grid">
         {ranked.map((r, i) => (
-          <div className="thermo-row" key={r.id} onClick={() => onPick(r.id)}>
+          <div className="thermo-row" key={r.id} {...clickable(() => onPick(r.id), WC.name(r.id, lang))}>
             <span className={"rk" + (i < 3 ? " top" : "")}>{i + 1}</span>
             <Flag id={r.id} w={40} />
             <div className="thermo-stack">
@@ -98,6 +98,7 @@ function Thermometer({ lang, onPick }) {
 function TrackRecord({ lang, openPair }) {
   const tr = D.trackRecord;
   const [open, setOpen] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);   // camada "por que confiar / onde erra"
   const [tab, setTab] = useState("all");   // all | hit | miss
   if (!tr || !tr.summary || !tr.summary.n) return null;
   const s = tr.summary;
@@ -115,6 +116,50 @@ function TrackRecord({ lang, openPair }) {
       const ok = (g.probHit ?? g.winnerHit);
       return tab === "all" ? true : tab === "hit" ? ok : !ok;
     });
+
+  // ----- explicabilidade ("por que confiar / onde erra") -----
+  const conf = (g) => Math.max(g.ph, g.pd, g.pa);          // confiança = prob. do resultado mais provável
+  const okOf = (g) => (g.probHit ?? g.winnerHit);
+  const byConf = [...tr.games].sort((a, b) => conf(b) - conf(a));
+  const confHits = byConf.filter(okOf).slice(0, 3);
+  const confMiss = byConf.filter(g => !okOf(g)).slice(0, 3);
+  const calBins = [[0, 0.4], [0.4, 0.55], [0.55, 0.7], [0.7, 1.0001]].map(([lo, hi]) => {
+    const gs = tr.games.filter(g => { const c = conf(g); return c >= lo && c < hi; });
+    const n = gs.length;
+    return { lo, hi, n, hit: n ? gs.filter(okOf).length / n : 0, avg: n ? gs.reduce((x, g) => x + conf(g), 0) / n : 0 };
+  });
+  // barras comparativas (largura = "melhor = mais longa", para acerto e Brier)
+  function cmpRows(rows, lowerBetter) {
+    const vals = rows.map(r => r.v);
+    const max = Math.max(...vals), min = Math.min(...vals);
+    const bestV = lowerBetter ? min : max;
+    return rows.map(r => {
+      const w = max === min ? 100 : (lowerBetter ? (max - r.v) / (max - min) : (r.v - min) / (max - min)) * 78 + 22;
+      return { ...r, w, best: r.v === bestV };
+    });
+  }
+  const accRows = cmpRows([
+    { k: pt ? "Modelo" : "Model", v: accPct, color: "var(--teal)" },
+    { k: "Elo", v: eloPct, color: "var(--purple)" },
+    { k: pt ? "Aleatório" : "Random", v: 33, color: "#bbb" },
+  ], false);
+  const brierRows = cmpRows([
+    { k: pt ? "Modelo" : "Model", v: s.brier, color: "var(--teal)" },
+    { k: "Elo", v: s.brierElo ?? s.brierUniform, color: "var(--purple)" },
+    { k: pt ? "Chute" : "Guess", v: s.brierUniform, color: "#bbb" },
+  ], true);
+  function gameLine(g) {
+    const hId = idByEn(g.home), aId = idByEn(g.away);
+    const canOpen = hId != null && aId != null && D.calendarEntry(hId, aId);
+    const props = canOpen ? clickable(() => openPair(hId, aId)) : {};
+    return (
+      <div key={g.home + g.away + g.date} className={"why-game" + (canOpen ? " clickable" : "")} {...props}>
+        {hId != null && <Flag id={hId} w={18} />}
+        <span className="wg-nm">{nm(g.home)} <b>{g.actual[0]}–{g.actual[1]}</b> {nm(g.away)}</span>
+        <span className="wg-conf">{Math.round(conf(g) * 100)}%</span>
+      </div>
+    );
+  }
 
   return (
     <div className="card card-accent-teal model-perf">
@@ -157,6 +202,9 @@ function TrackRecord({ lang, openPair }) {
       </div>
 
       <div className="mp-toolbar">
+        <button className={"btn" + (showWhy ? " primary" : "")} onClick={() => setShowWhy(o => !o)}>
+          {showWhy ? (pt ? "Ocultar análise" : "Hide analysis") : (pt ? "🔍 Por que confiar?" : "🔍 Why trust it?")}
+        </button>
         <button className={"btn" + (open ? " primary" : "")} onClick={() => setOpen(o => !o)}>
           {open ? (pt ? "Ocultar jogo a jogo" : "Hide game by game") : (pt ? "Ver jogo a jogo" : "Show game by game")}
         </button>
@@ -168,6 +216,69 @@ function TrackRecord({ lang, openPair }) {
           </div>
         )}
       </div>
+
+      {showWhy && (
+        <div className="mp-why">
+          <div className="mp-why-grid">
+            {/* A. comparativo Modelo × Elo × Aleatório */}
+            <div className="mp-why-block">
+              <div className="mp-why-h">{pt ? "Acerto do resultado" : "Result accuracy"} <small>↑ {pt ? "melhor" : "better"}</small></div>
+              {accRows.map((r, i) => (
+                <div key={i} className={"cmp-row" + (r.best ? " best" : "")}>
+                  <span className="cmp-k">{r.k}</span>
+                  <span className="cmp-bar"><i style={{ width: r.w + "%", background: r.color }} /></span>
+                  <span className="cmp-v">{r.v}%</span>
+                </div>
+              ))}
+            </div>
+            <div className="mp-why-block">
+              <div className="mp-why-h">Brier <small>↓ {pt ? "melhor" : "better"}</small></div>
+              {brierRows.map((r, i) => (
+                <div key={i} className={"cmp-row" + (r.best ? " best" : "")}>
+                  <span className="cmp-k">{r.k}</span>
+                  <span className="cmp-bar"><i style={{ width: r.w + "%", background: r.color }} /></span>
+                  <span className="cmp-v">{r.v.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* C. calibração por faixa de confiança */}
+          <div className="mp-why-block">
+            <div className="mp-why-h">{pt ? "Calibração por confiança" : "Calibration by confidence"}
+              <small>{pt ? "barra = acerto real; ◆ = confiança média" : "bar = real accuracy; ◆ = avg confidence"}</small></div>
+            {calBins.map((b, i) => (
+              <div key={i} className="cal-row" style={{ opacity: b.n ? 1 : 0.4 }}>
+                <span className="cal-rng">{Math.round(b.lo * 100)}–{Math.round((b.hi > 1 ? 1 : b.hi) * 100)}%</span>
+                <span className="cal-track">
+                  <i style={{ width: (b.hit * 100) + "%" }} />
+                  {b.n > 0 && <em className="cal-diamond" style={{ left: (b.avg * 100) + "%" }} title={pt ? "confiança média" : "avg confidence"}>◆</em>}
+                </span>
+                <span className="cal-n">{b.n ? Math.round(b.hit * 100) + "% · " + b.n + (pt ? " jogos" : " games") : "—"}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* B. jogos de maior confiança */}
+          <div className="mp-why-grid">
+            <div className="mp-why-block">
+              <div className="mp-why-h">✅ {pt ? "Mais confiante e acertou" : "Most confident & right"}</div>
+              {confHits.length ? confHits.map(gameLine) : <div className="why-empty">—</div>}
+            </div>
+            <div className="mp-why-block">
+              <div className="mp-why-h">❌ {pt ? "Mais confiante e errou" : "Most confident & wrong"}</div>
+              {confMiss.length ? confMiss.map(gameLine) : <div className="why-empty">—</div>}
+            </div>
+          </div>
+
+          {/* D. texto explicativo */}
+          <div className="mp-why-note">
+            {pt
+              ? "Placar exato é ruído — o foco é acertar o resultado (V/E/D) e a calibração. O Brier mede a qualidade das probabilidades (quanto menor, melhor; o chute uniforme é a referência). Na calibração, o ideal é a barra de acerto real ficar perto do losango de confiança média."
+              : "Exact scores are noise — the focus is the result (W/D/L) and calibration. Brier measures probability quality (lower is better; uniform guess is the reference). In calibration, the real-accuracy bar should sit close to the average-confidence diamond."}
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="mp-games">
@@ -231,7 +342,7 @@ function GroupCard({ group, lang, onPick }) {
         <span className="lab">{lang === "pt" ? "Classificação prevista" : "Predicted standing"}</span>
       </div>
       {group.table.map((row, i) => (
-        <div key={row.id} className={"grow " + Q_CLASS[i]} onClick={() => onPick(row.id)}>
+        <div key={row.id} className={"grow " + Q_CLASS[i]} {...clickable(() => onPick(row.id), WC.name(row.id, lang))}>
           <span className="pos">{i + 1}</span>
           <Flag id={row.id} w={32} />
           <span className="nm">{WC.name(row.id, lang)}</span>
@@ -285,7 +396,7 @@ function BracketMatch({ match, lang, overrides, onToggle, openPair }) {
     const sc = side === "a" ? score[0] : score[1];
     return (
       <div className={"bm-team" + (isWin ? " win" : " lose") + (isEdited && overrides[match.id] === id ? " edited" : "")}
-           onClick={() => onToggle(match.id, id, side === "a" ? b : a, match)}
+           {...clickable(() => onToggle(match.id, id, side === "a" ? b : a, match), WC.name(id, lang))}
            title={lang === "pt" ? "Clique para fazer esta seleção vencer" : "Click to make this team win"}>
         <Flag id={id} w={26} />
         <span className="nm">{WC.name(id, lang)}</span>

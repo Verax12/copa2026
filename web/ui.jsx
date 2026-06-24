@@ -88,20 +88,79 @@ function roundLabel(rk, lang, kind) {
   return src[rk] ? src[rk][lang] : rk;
 }
 
-/* ---------- Modal genérico (overlay + esc + scroll lock) ---------- */
-function Modal({ open, onClose, children, labelledBy }) {
+/* props para tornar um <div>/<span> clicável acessível por teclado
+   (Enter/Espaço ativam). Use: <div {...clickable(() => acao())}>          */
+function clickable(handler, label) {
+  return {
+    role: "button", tabIndex: 0,
+    onClick: handler,
+    onKeyDown: (e) => {
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") { e.preventDefault(); handler(e); }
+    },
+    "aria-label": label,
+  };
+}
+
+/* ---------- Modal genérico (overlay + esc + scroll lock + acessibilidade) ----------
+   - Escape e clique no overlay fecham
+   - trava o scroll do body
+   - focus trap: Tab/Shift+Tab circulam só dentro do modal
+   - foco inicial no initialFocusSelector (ex.: .mm-close) ou no 1º focável
+   - restaura o foco para o elemento que abriu o modal ao fechar              */
+const FOCUSABLE_SEL = 'a[href],button:not([disabled]),input:not([disabled]),' +
+  'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+function Modal({ open, onClose, children, labelledBy, initialFocusSelector }) {
+  const shellRef = useRef(null);
+  const openerRef = useRef(null);
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    // guarda quem tinha o foco para restaurar depois
+    openerRef.current = document.activeElement;
+    const shell = shellRef.current;
+    const focusables = () => shell
+      ? Array.prototype.slice.call(shell.querySelectorAll(FOCUSABLE_SEL))
+          .filter(el => el.offsetParent !== null || el === document.activeElement)
+      : [];
+
+    const focusInitial = () => {
+      let target = initialFocusSelector && shell ? shell.querySelector(initialFocusSelector) : null;
+      if (!target) target = focusables()[0] || shell;
+      if (target && target.focus) target.focus();
+    };
+    const t = setTimeout(focusInitial, 0);
+
+    const onKey = (e) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab") return;
+      const f = focusables();
+      if (!f.length) { e.preventDefault(); if (shell) shell.focus(); return; }
+      const first = f[0], last = f[f.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !shell.contains(active))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
+    const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
-  }, [open, onClose]);
+
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      // restaura o foco para o elemento que abriu o modal
+      const opener = openerRef.current;
+      if (opener && opener.focus && document.contains(opener)) {
+        setTimeout(() => { try { opener.focus(); } catch (_e) {} }, 0);
+      }
+    };
+  }, [open, onClose, initialFocusSelector]);
+
   if (!open) return null;
   return (
     <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal-shell" role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+      <div className="modal-shell" role="dialog" aria-modal="true" aria-labelledby={labelledBy}
+           ref={shellRef} tabIndex={-1}>
         {children}
       </div>
     </div>
@@ -111,6 +170,6 @@ function Modal({ open, onClose, children, labelledBy }) {
 /* expõe para os outros arquivos babel */
 Object.assign(window, {
   D, WC,
-  I18N, Flag, TeamChip, roundLabel, Modal,
+  I18N, Flag, TeamChip, roundLabel, Modal, clickable,
   useState, useMemo, useEffect, useRef
 });

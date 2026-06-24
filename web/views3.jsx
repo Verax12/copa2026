@@ -288,7 +288,7 @@ function MatchModal({ lang, entry, onClose }) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} labelledBy="mm-title">
+    <Modal open={open} onClose={onClose} labelledBy="mm-title" initialFocusSelector=".mm-close">
       <div className="mm-bar">
         <span className="mm-comp">{pt ? "Copa do Mundo 2026" : "World Cup 2026"} · {pt ? "Grupo" : "Group"} {entry.group}</span>
         <button className="mm-close" onClick={onClose} aria-label={pt ? "Fechar" : "Close"}>✕</button>

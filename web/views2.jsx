@@ -161,7 +161,7 @@ function TeamView({ lang, initId, openPair, onTeamRoute }) {
             const canOpen = !!D.calendarEntry(id, m.opp);
             return (
               <div key={"g" + i} className={"mrow card" + (canOpen ? " clickable" : "")}
-                   onClick={() => canOpen && openPair(id, m.opp)}
+                   {...(canOpen ? clickable(() => openPair(id, m.opp), (lang === "pt" ? "Ver detalhes do jogo" : "See match details")) : {})}
                    title={canOpen ? (lang === "pt" ? "Ver detalhes do jogo" : "See match details") : ""}>
                 <span className="ph">
                   {lang === "pt" ? "Grupos" : "Groups"} · {groupObj.label}
