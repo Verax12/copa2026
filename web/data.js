@@ -144,6 +144,18 @@
     });
   }
 
+  // ---- índice do calendário por par de seleções ----------------------
+  // permite abrir o modal de detalhe a partir de QUALQUER tela (grupo,
+  // seleção, comparador) reaproveitando a mesma entrada rica do calendário.
+  const calByPair = {};
+  (WD.calendar || []).forEach(c => {
+    calByPair[c.home + "-" + c.away] = c;
+    calByPair[c.away + "-" + c.home] = c;
+  });
+  function calendarEntry(aId, bId) {
+    return calByPair[aId + "-" + bId] || null;
+  }
+
   // ---- rótulos de rodada (corrigidos p/ Copa de 48 / 32 no mata-mata)-
   const ROUND_LABEL = {
     GROUP: { pt: "Fase de grupos", en: "Group stage" },
@@ -171,6 +183,7 @@
     titleProb: WD.titleProb,
     finalProb: WD.finalProb, semiProb: WD.semiProb, advProb: WD.advProb,
     baseBracket, buildBracket, computeFinish, groupMatchesFor, getMatchStats, predScore, byId,
+    calendarEntry,
     ROUND_KEYS, ROUND_LABEL, ROUND_SHORT,
     GROUP_LABELS: WD.groupLabels,
     trackRecord: WD.trackRecord || null,

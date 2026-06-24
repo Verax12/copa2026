@@ -43,6 +43,8 @@ def main() -> None:
     ap.add_argument("--live", action="store_true",
                     help="aplica o ajuste de forma ao vivo (dados granulares da "
                          "API-Football em api_cache/); ignora se o cache estiver vazio")
+    ap.add_argument("--no-calibration", action="store_true",
+                    help="desliga a calibração pós-modelo de V/E/D")
     ap.add_argument("--path", metavar="SELECAO",
                     help="mostra o caminho fixo da seleção no mata-mata (1º e 2º do "
                          "grupo) segundo o bracket oficial, e sai")
@@ -95,12 +97,18 @@ def main() -> None:
             print(f"     [--live] ajuste aplicado a {n_teams} selecoes "
                   f"({stats['fixture'].nunique()} jogos com stats).")
 
+    if not args.no_calibration:
+        print("     Calibrando probabilidades V/E/D em validação temporal...")
+        from .outcome_calibration import calibrate_model
+        model = calibrate_model(model, matches, engine=args.engine, w=0.5)
+
     print(f"4/5  Simulando o torneio {args.sims:,}x (Monte Carlo)...")
     table = simulate(model, elo, played, n_sims=args.sims, shootout_beta=beta)
 
     print("5/5  Pronto.\n")
+    cal = "calibrado" if not args.no_calibration else "sem calibracao"
     print(f"=== PROBABILIDADE DE CAMPEAO -- Copa 2026  "
-          f"[motor: {args.engine}]  ({args.sims:,} simulacoes) ===\n")
+          f"[motor: {args.engine}, {cal}]  ({args.sims:,} simulacoes) ===\n")
     top = table.head(15)
     print(f"{'#':>2}  {'Selecao':<24}{'Campeao':>9}{'Final':>8}{'Semi':>8}{'Avanca':>9}{'Elo':>8}")
     for i, (_, r) in enumerate(top.iterrows(), 1):

@@ -17,11 +17,13 @@ Uso:  python -m wc2026.track
 """
 from __future__ import annotations
 
+import argparse
+
 import numpy as np
 
 from .data import load_matches, load_played_wc2026
-from .goal_model import fit_dixon_coles
 from .elo import compute_elo, win_probabilities, HOME_ADVANTAGE, BASE_RATING
+from .outcome_calibration import CalibratedGoalModel, fit_outcome_calibrator
 
 CUP_START = "2026-06-11"
 
@@ -30,16 +32,33 @@ def _outcome(hs: int, a_s: int) -> int:
     return 0 if hs > a_s else (1 if hs == a_s else 2)
 
 
-def backtest(cutoff: str = CUP_START) -> dict:
+def _build_model(matches, engine: str = "ensemble", w: float = 0.5):
+    if engine == "ensemble":
+        from .ensemble import build_ensemble
+        return build_ensemble(matches, w=w)
+    if engine == "ml":
+        from .features import build_features, current_state
+        from .groups import all_teams
+        from .ml_model import MLGoalModel, train
+        return MLGoalModel(train(build_features(matches)), current_state(matches), all_teams())
+    from .goal_model import fit_dixon_coles
+    return fit_dixon_coles(matches)
+
+
+def backtest(cutoff: str = CUP_START, engine: str = "ensemble",
+             calibrated: bool = True, w: float = 0.5, calibration_alpha: float = 0.5) -> dict:
     matches = load_matches()
     played = load_played_wc2026()
     train = matches[matches["date"] < cutoff]
 
-    model = fit_dixon_coles(train)                 # modelo "congelado" pré-Copa
+    model = _build_model(train, engine=engine, w=w)  # modelo "congelado" pré-Copa
+    if calibrated:
+        cal = fit_outcome_calibrator(matches, valid_until=cutoff, engine=engine, w=w)
+        model = CalibratedGoalModel(model, cal, alpha=calibration_alpha)
     elo = compute_elo(train)                        # Elo só com dados pré-Copa (baseline)
 
     games = []
-    n = win_ok = exact_ok = base_ok = 0
+    n = win_ok = prob_ok = exact_ok = base_ok = 0
     brier = logloss = brier_unif = brier_elo = 0.0
 
     for r in played.itertuples(index=False):
@@ -53,6 +72,7 @@ def backtest(cutoff: str = CUP_START) -> dict:
         # "acerto do resultado" = resultado (V/E/D) do PLACAR PREVISTO (a moda exibida)
         # vs o real — coerente com o que o painel mostra ("prev. X-Y").
         pred = _outcome(int(gi), int(gj))
+        prob_pred = int(np.argmax(probs))
         I = [0, 0, 0]; I[actual] = 1
 
         # baseline Elo (pela probabilidade, só como referência)
@@ -63,6 +83,7 @@ def backtest(cutoff: str = CUP_START) -> dict:
 
         n += 1
         win_ok += (pred == actual)
+        prob_ok += (prob_pred == actual)
         base_ok += (base_pred == actual)
         exact_ok += (int(gi) == int(r.home_score) and int(gj) == int(r.away_score))
         brier += sum((probs[k] - I[k]) ** 2 for k in range(3))
@@ -74,13 +95,17 @@ def backtest(cutoff: str = CUP_START) -> dict:
             "date": str(r.date)[:10], "home": r.home_team, "away": r.away_team,
             "ph": round(float(ph), 3), "pd": round(float(pd_), 3), "pa": round(float(pa), 3),
             "predScore": [int(gi), int(gj)], "actual": [int(r.home_score), int(r.away_score)],
-            "winnerHit": bool(pred == actual), "exactHit": bool(int(gi) == int(r.home_score) and int(gj) == int(r.away_score)),
+            "winnerHit": bool(pred == actual), "probHit": bool(prob_pred == actual),
+            "predResult": int(prob_pred),
+            "exactHit": bool(int(gi) == int(r.home_score) and int(gj) == int(r.away_score)),
         })
 
     summary = {
         "n": n,
         "winnerCorrect": int(win_ok),
         "winnerAcc": round(win_ok / n, 3) if n else 0.0,
+        "probCorrect": int(prob_ok),
+        "probAcc": round(prob_ok / n, 3) if n else 0.0,
         "exactCorrect": int(exact_ok),
         "brier": round(brier / n, 3) if n else 0.0,
         "logloss": round(logloss / n, 3) if n else 0.0,
@@ -88,16 +113,26 @@ def backtest(cutoff: str = CUP_START) -> dict:
         "brierUniform": round(brier_unif / n, 3) if n else 0.0,
         "brierElo": round(brier_elo / n, 3) if n else 0.0,
         "cutoff": cutoff,
+        "engine": engine,
+        "calibrated": bool(calibrated),
+        "calibrationAlpha": float(calibration_alpha) if calibrated else 0.0,
     }
     return {"summary": summary, "games": games}
 
 
 if __name__ == "__main__":
-    res = backtest()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--engine", choices=["dixon", "ml", "ensemble"], default="ensemble")
+    ap.add_argument("--no-calibration", action="store_true")
+    args = ap.parse_args()
+
+    res = backtest(engine=args.engine, calibrated=not args.no_calibration)
     s = res["summary"]
-    print(f"Backtest pré-Copa (modelo treinado só com dados < {s['cutoff']}):\n")
+    cal = "calibrado" if s["calibrated"] else "sem calibração"
+    print(f"Backtest pré-Copa ({s['engine']}, {cal}; treino < {s['cutoff']}):\n")
     print(f"  Jogos avaliados:        {s['n']}")
     print(f"  Acerto do resultado:    {s['winnerCorrect']}/{s['n']} ({s['winnerAcc']:.0%})")
+    print(f"  Acerto V/E/D (argmax):  {s['probCorrect']}/{s['n']} ({s['probAcc']:.0%})")
     print(f"     baseline (só Elo):   {s['baselineEloAcc']:.0%}")
     print(f"  Placar exato:           {s['exactCorrect']}/{s['n']}")
     print(f"  Brier:                  {s['brier']:.3f}  (chute={s['brierUniform']:.3f}, Elo={s['brierElo']:.3f}; menor=melhor)")

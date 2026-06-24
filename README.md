@@ -36,11 +36,16 @@ No Mac M4 Pro roda em segundos. Se o `xgboost` reclamar de OpenMP: `brew install
    - `ml` — **gradient boosting Poisson** (XGBoost/sklearn) sobre features ricas:
      Elo, forma recente, gols recentes e o perfil ofensivo de jogadores
      (`features.py` + `ml_model.py`). Validado out-of-time.
+   - `ensemble` — blend das matrizes Dixon-Coles + ML; é o padrão do dashboard.
 
-5. **Pênaltis calibrados** (`shootout.py`) — probabilidade de vencer a disputa
+5. **Calibração V/E/D** (`outcome_calibration.py`) — correção pós-modelo treinada
+   em validação temporal, reescalando a matriz de placares para melhorar as
+   probabilidades de vitória/empate/derrota. Desligue com `--no-calibration`.
+
+6. **Pênaltis calibrados** (`shootout.py`) — probabilidade de vencer a disputa
    ajustada no histórico real (≈ moeda ao ar, leve vantagem ao favorito).
 
-6. **Monte Carlo** (`simulate.py` + `bracket.py`) — joga o torneio N vezes. Jogos
+7. **Monte Carlo** (`simulate.py` + `bracket.py`) — joga o torneio N vezes. Jogos
    já realizados entram com placar real; o resto é amostrado. Classifica 1º+2º de
    cada grupo + 8 melhores terceiros (formato 2026) e roda o mata-mata usando o
    **chaveamento OFICIAL da FIFA** (jogos 73-104), incluindo a tabela das 495
@@ -107,6 +112,7 @@ python -m wc2026.elo          # top seleções por Elo
 python -m wc2026.players      # perfil ofensivo e artilheiros
 python -m wc2026.shootout     # calibração de pênaltis
 python -m wc2026.ml_model     # validação out-of-time + importância das features
+python -m wc2026.prediction_test  # backtest pré-Copa vs jogos reais atuais
 ```
 
 ## Dashboard web

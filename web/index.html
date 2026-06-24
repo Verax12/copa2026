@@ -37,14 +37,23 @@
       const [lang, setLang]     = React.useState(() => localStorage.getItem("wc26-lang") || "pt");
       const [tab,  setTab]      = React.useState(() => localStorage.getItem("wc26-tab")  || "overview");
       const [jumpTeam, setJump] = React.useState(null);
-      const [matchSel, setMatchSel] = React.useState(null);
+      const [modalEntry, setModalEntry] = React.useState(null);
       const T = I18N[lang];
       const meta = (window.DATA && window.DATA.meta) || {};
 
       function switchLang(l) { setLang(l); localStorage.setItem("wc26-lang", l); }
-      function switchTab(t)  { setTab(t);  localStorage.setItem("wc26-tab",  t); }
+      function switchTab(t)  {
+        setTab(t);
+        localStorage.setItem("wc26-tab",  t);
+        // Calendário tem rolagem própria para o dia atual; as demais abas
+        // devem iniciar no topo para evitar herdar o scroll da aba anterior.
+        if (t !== "calendar") setTimeout(() => window.scrollTo({ top: 0, behavior: "auto" }), 0);
+      }
       function handleTeamPick(id) { setJump(id); switchTab("team"); }
-      function openMatch(entry) { setMatchSel(entry); setTab("match"); window.scrollTo({ top: 0 }); }
+      // abre os detalhes do jogo num MODAL (sem trocar de página)
+      function openMatch(entry) { if (entry) setModalEntry(entry); }
+      // abre o jogo a partir de um par de seleções (grupos, seleção, comparador)
+      function openPair(aId, bId) { const e = D.calendarEntry(aId, bId); if (e) setModalEntry(e); }
       React.useEffect(() => { if (tab !== "team") setJump(null); }, [tab]);
 
       const NAV = [
@@ -97,20 +106,19 @@
           </div>
 
           <main className="app">
-            {tab === "overview" && <HeroView    lang={lang} onPick={handleTeamPick} />}
-            {tab === "stages"   && <StagesView  lang={lang} onTeamPick={handleTeamPick} />}
+            {tab === "overview" && <HeroView    lang={lang} onPick={handleTeamPick} openPair={openPair} />}
+            {tab === "stages"   && <StagesView  lang={lang} onTeamPick={handleTeamPick} openPair={openPair} />}
             {tab === "calendar" && <CalendarView lang={lang} openMatch={openMatch} />}
-            {tab === "match"    && <MatchDetailView lang={lang} entry={matchSel} back={() => switchTab("calendar")} />}
-            {tab === "team"     && <TeamView    lang={lang} initId={jumpTeam} key={jumpTeam ?? "team"} />}
-            {tab === "compare"  && <CompareView lang={lang} />}
+            {tab === "team"     && <TeamView    lang={lang} initId={jumpTeam} key={jumpTeam ?? "team"} openPair={openPair} />}
+            {tab === "compare"  && <CompareView lang={lang} openPair={openPair} />}
 
             <div className="datanote">
               <span>📊</span>
               <span><b>{lang === "pt" ? "Dados do modelo." : "Model data."}</b> {noteBody}</span>
             </div>
-
-            {tab === "overview" && <RoadmapView lang={lang} />}
           </main>
+
+          <MatchModal lang={lang} entry={modalEntry} onClose={() => setModalEntry(null)} />
         </div>
       );
     }

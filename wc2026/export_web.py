@@ -204,6 +204,40 @@ def build_calendar(idx: dict, model, played, track_record: dict) -> list[dict]:
     for g in (track_record or {}).get("games", []):
         pre[frozenset((g["home"], g["away"]))] = g
 
+    # mídia/contexto extra do TheSportsDB (highlight, thumb, estádio oficial)
+    tsdb = {}
+    ev_fp = CACHE / "tsdb_events.json"
+    if ev_fp.exists():
+        for e in (J.loads(ev_fp.read_text()).get("events") or []):
+            hh = normalize_team(e.get("strHomeTeam", ""))
+            aa = normalize_team(e.get("strAwayTeam", ""))
+            tsdb[frozenset((hh, aa))] = {
+                "video": e.get("strVideo") or "",
+                "thumb": e.get("strThumb") or "",
+                "venue": e.get("strVenue") or "",
+            }
+
+    def _goals(raw):
+        """Normaliza a lista de gols do openfootball (autor, minuto, pênalti)."""
+        out = []
+        for ev in (raw or []):
+            if not ev.get("name"):
+                continue
+            out.append({
+                "name": ev.get("name", ""),
+                "minute": str(ev.get("minute", "")),
+                "penalty": bool(ev.get("penalty", False)),
+                "owngoal": bool(ev.get("owngoal", False)),
+            })
+        # ordena por minuto (trata '90+4' etc.)
+        def _mk(g):
+            mm = g["minute"].replace("'", "").split("+")
+            try:
+                return int(mm[0]) * 100 + (int(mm[1]) if len(mm) > 1 else 0)
+            except Exception:
+                return 9999
+        return sorted(out, key=_mk)
+
     cal = []
     for m in matches:
         if not str(m.get("group", "")).startswith("Group"):
@@ -217,6 +251,7 @@ def build_calendar(idx: dict, model, played, track_record: dict) -> list[dict]:
         lh, la = model.expected_goals(h, a, neutral=True)
         city, stadium = GROUND_TO_STADIUM.get(m.get("ground", ""), (m.get("ground", ""), ""))
         ft = (m.get("score") or {}).get("ft")
+        media = tsdb.get(frozenset((h, a)), {})
         entry = {
             "date": m.get("date"), "kickoff": _parse_kickoff(m.get("time", "")),
             "group": m.get("group", "").replace("Group ", ""),
@@ -225,9 +260,14 @@ def build_calendar(idx: dict, model, played, track_record: dict) -> list[dict]:
             "pred": {"ph": round(ph, 3), "pd": round(pdr, 3), "pa": round(pa, 3),
                      "score": [int(gi), int(gj)], "xg": [round(float(lh), 2), round(float(la), 2)]},
             "actual": None, "pre": None,
+            "video": media.get("video", ""), "thumb": media.get("thumb", ""),
         }
         if ft is not None:
             entry["actual"] = [int(ft[0]), int(ft[1])]
+            htsc = (m.get("score") or {}).get("ht")
+            if htsc:
+                entry["ht"] = [int(htsc[0]), int(htsc[1])]
+            entry["goals"] = {"home": _goals(m.get("goals1")), "away": _goals(m.get("goals2"))}
             g = pre.get(frozenset((h, a)))
             if g:
                 # orienta a previsão pré-jogo para a ordem (home=h, away=a)
@@ -272,7 +312,7 @@ def build_match_dates(idx: dict, played) -> dict:
     return out
 
 
-def build_model(engine: str, live: bool):
+def build_model(engine: str, live: bool, calibrated: bool = True):
     matches = load_matches()
     played = load_played_wc2026()
     elo = compute_elo(matches)
@@ -293,11 +333,15 @@ def build_model(engine: str, live: bool):
         stats = gather_live_stats()
         if not stats.empty:
             model = AdjustedGoalModel(model, build_team_adjustments(model, stats))
+    if calibrated:
+        from .outcome_calibration import calibrate_model
+        model = calibrate_model(model, matches, engine=engine, w=0.5)
     return matches, played, elo, beta, model
 
 
-def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path:
-    matches, played, elo, beta, model = build_model(engine, live)
+def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
+           calibrated: bool = True) -> Path:
+    matches, played, elo, beta, model = build_model(engine, live, calibrated)
     table = simulate(model, elo, played, n_sims=sims, shootout_beta=beta)
 
     teams_order = all_teams()                      # ids 0..47 nesta ordem
@@ -413,7 +457,7 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
 
     # --- track record: backtest sem vazamento dos jogos já disputados ---
     from .track import backtest
-    track_record = backtest()
+    track_record = backtest(engine=engine, calibrated=calibrated)
 
     # --- calendário da fase de grupos (datas/horas/estádios + previsão por jogo) ---
     calendar = build_calendar(idx, model, played, track_record)
@@ -439,7 +483,7 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False) -> Path
         "matchDates": match_dates,
         "venues": VENUES,
         "meta": {
-            "engine": engine, "sims": sims, "live": live,
+            "engine": engine, "sims": sims, "live": live, "calibrated": calibrated,
             "playedMatches": int(len(played)),
             "topFavorite": teams[seeds[0]]["en"] if seeds else None,
         },
@@ -457,9 +501,13 @@ def main() -> None:
     ap.add_argument("--engine", choices=["dixon", "ml", "ensemble"], default="ensemble")
     ap.add_argument("--sims", type=int, default=20000)
     ap.add_argument("--live", action="store_true")
+    ap.add_argument("--no-calibration", action="store_true",
+                    help="desliga a calibração pós-modelo de V/E/D")
     args = ap.parse_args()
-    print(f"Rodando modelo (engine={args.engine}, sims={args.sims:,}, live={args.live})...")
-    out = export(args.engine, args.sims, args.live)
+    calibrated = not args.no_calibration
+    print(f"Rodando modelo (engine={args.engine}, sims={args.sims:,}, "
+          f"live={args.live}, calibrated={calibrated})...")
+    out = export(args.engine, args.sims, args.live, calibrated)
     size_kb = out.stat().st_size / 1024
     print(f"Exportado: {out}  ({size_kb:.0f} KB)")
     import json as J
