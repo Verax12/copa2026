@@ -16,3 +16,6 @@ api_cache/
 # handoff com segredos — NUNCA commitar (repo é público)
 HANDOFF.md
 SECRETS*.md
+
+# build
+node_modules/

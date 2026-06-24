@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Copa 2026 · Dashboard de Predições</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Semi+Condensed:wght@400;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- dados REAIS do modelo + camada window.DATA. Carregados com cache-bust
+       (?t=timestamp) para a reload SEMPRE pegar a versão mais recente após o
+       /atualizar — senão o GitHub Pages/navegador serviria a versão em cache. -->
+  <script>
+    (function () {
+      var t = Date.now();
+      document.write('<scr' + 'ipt src="wc_data.js?t=' + t + '"><\/scr' + 'ipt>');
+      document.write('<scr' + 'ipt src="data.js?t=' + t + '"><\/scr' + 'ipt>');
+    })();
+  </script>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="ui.jsx"></script>
+  <script type="text/babel" src="views1.jsx"></script>
+  <script type="text/babel" src="views2.jsx"></script>
+  <script type="text/babel" src="views3.jsx"></script>
+
+  <script type="text/babel">
+    function parseRoute() {
+      const raw = (window.location.hash || "").replace(/^#\/?/, "");
+      const [pathRaw, queryRaw] = raw.split("?");
+      const parts = (pathRaw || "").split("/").filter(Boolean).map(decodeURIComponent);
+      const qs = new URLSearchParams(queryRaw || "");
+      const first = (parts[0] || "").toLowerCase();
+      const route = { tab: null, teamId: null, compare: null, match: null, calendar: {} };
+
+      qs.forEach((v, k) => { route.calendar[k] = v; });
+
+      if (!first || first === "overview" || first === "visao-geral" || first === "geral") route.tab = "overview";
+      else if (["stages","etapas","fase","fases"].includes(first)) route.tab = "stages";
+      else if (["calendar","calendario"].includes(first)) {
+        route.tab = "calendar";
+        if (parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1])) route.calendar.date = parts[1];
+      } else if (["team","selecao","seleção","por-selecao","por-seleção"].includes(first)) {
+        route.tab = "team";
+        route.teamId = D.teamFromKey(parts[1]);
+      } else if (["compare","comparador"].includes(first)) {
+        route.tab = "compare";
+        const a = D.teamFromKey(parts[1]);
+        const b = D.teamFromKey(parts[2]);
+        if (a != null || b != null) route.compare = { aId: a, bId: b };
+      } else if (["match","jogo"].includes(first)) {
+        const entry = D.matchFromKey(parts.slice(1).join("/"));
+        route.tab = qs.get("from") || "calendar";
+        route.match = entry;
+      }
+      return route;
+    }
+
+    function calendarHash(filters) {
+      const f = filters || {};
+      const date = f.date ? "/" + encodeURIComponent(f.date) : "";
+      const qs = new URLSearchParams();
+      ["status","team","group","venue"].forEach(k => {
+        if (f[k] && f[k] !== "all") qs.set(k, f[k]);
+      });
+      const q = qs.toString();
+      return "#/calendario" + date + (q ? "?" + q : "");
+    }
+
+    function App() {
+      const initialRoute = React.useMemo(() => parseRoute(), []);
+      const [lang, setLang]     = React.useState(() => localStorage.getItem("wc26-lang") || "pt");
+      const [tab,  setTab]      = React.useState(() => initialRoute.tab || localStorage.getItem("wc26-tab") || "overview");
+      const [jumpTeam, setJump] = React.useState(initialRoute.teamId);
+      const [compareRoute, setCompareRoute] = React.useState(initialRoute.compare);
+      const [calendarRoute, setCalendarRoute] = React.useState(initialRoute.calendar || {});
+      const [modalEntry, setModalEntry] = React.useState(initialRoute.match);
+      const lastNonModalHash = React.useRef(window.location.hash && !window.location.hash.startsWith("#/jogo") ? window.location.hash : "#/" + (initialRoute.tab || "overview"));
+      const T = I18N[lang];
+      const meta = (window.DATA && window.DATA.meta) || {};
+
+      function setHash(hash, replace) {
+        if (!hash) return;
+        if (window.location.hash === hash) return;
+        if (replace) history.replaceState(null, "", hash);
+        else history.pushState(null, "", hash);
+      }
+      function tabHash(t) {
+        return t === "overview" ? "#/overview"
+          : t === "stages" ? "#/etapas"
+          : t === "calendar" ? calendarHash(calendarRoute)
+          : t === "team" ? "#/selecao"
+          : t === "compare" ? "#/comparador"
+          : "#/overview";
+      }
+
+      function switchLang(l) { setLang(l); localStorage.setItem("wc26-lang", l); }
+      function switchTab(t)  {
+        setTab(t);
+        localStorage.setItem("wc26-tab",  t);
+        setHash(tabHash(t));
+        // Calendário tem rolagem própria para o dia atual; as demais abas
+        // devem iniciar no topo para evitar herdar o scroll da aba anterior.
+        if (t !== "calendar") setTimeout(() => window.scrollTo({ top: 0, behavior: "auto" }), 0);
+      }
+      function handleTeamPick(id) {
+        if (id == null) {
+          setJump(null);
+          setTab("team");
+          localStorage.setItem("wc26-tab", "team");
+          setHash("#/selecao");
+          return;
+        }
+        setJump(id);
+        setTab("team");
+        localStorage.setItem("wc26-tab", "team");
+        setHash("#/selecao/" + D.teamSlug(id, lang));
+      }
+      // abre os detalhes do jogo num MODAL (sem trocar de página)
+      function openMatch(entry) {
+        if (!entry) return;
+        if (!window.location.hash.startsWith("#/jogo")) lastNonModalHash.current = window.location.hash || tabHash(tab);
+        setModalEntry(entry);
+        setHash("#/jogo/" + D.matchSlug(entry) + "?from=" + encodeURIComponent(tab));
+      }
+      // abre o jogo a partir de um par de seleções (grupos, seleção, comparador)
+      function openPair(aId, bId) { const e = D.calendarEntry(aId, bId); if (e) openMatch(e); }
+      function closeMatch() {
+        setModalEntry(null);
+        if (window.location.hash.startsWith("#/jogo")) setHash(lastNonModalHash.current || tabHash(tab), true);
+      }
+      function handleCalendarRoute(filters) {
+        setCalendarRoute(filters);
+        if (tab === "calendar") setHash(calendarHash(filters), true);
+      }
+      function handleCompareRoute(aId, bId) {
+        setCompareRoute({ aId, bId });
+        if (tab === "compare" && aId != null && bId != null) {
+          setHash("#/comparador/" + D.teamSlug(aId, lang) + "/" + D.teamSlug(bId, lang), true);
+        }
+      }
+      React.useEffect(() => { if (tab !== "team") setJump(null); }, [tab]);
+      React.useEffect(() => {
+        const onHash = () => {
+          const r = parseRoute();
+          if (r.tab) { setTab(r.tab); localStorage.setItem("wc26-tab", r.tab); }
+          setJump(r.teamId);
+          setCompareRoute(r.compare);
+          setCalendarRoute(r.calendar || {});
+          if (r.match) setModalEntry(r.match);
+          else if (!window.location.hash.startsWith("#/jogo")) setModalEntry(null);
+          if (!window.location.hash.startsWith("#/jogo")) lastNonModalHash.current = window.location.hash || "#/overview";
+        };
+        window.addEventListener("hashchange", onHash);
+        return () => window.removeEventListener("hashchange", onHash);
+      }, []);
+
+      const NAV = [
+        { id: "overview", ic: "🏆", label: T.navHero    },
+        { id: "stages",   ic: "⚽", label: T.navStages  },
+        { id: "calendar", ic: "📅", label: lang === "pt" ? "Calendário" : "Calendar" },
+        { id: "team",     ic: "🌍", label: T.navTeam    },
+        { id: "compare",  ic: "⚖️", label: T.navCompare },
+      ];
+
+      const engineLabel = meta.engine === "ml" ? "ML (boosting + jogadores)"
+        : meta.engine === "ensemble" ? "ensemble (Dixon-Coles + ML)" : "Dixon-Coles";
+      const noteBody = (lang === "pt"
+        ? `Probabilidades de ${(meta.sims||0).toLocaleString("pt-BR")} simulações de Monte Carlo (motor ${engineLabel}${meta.live ? " + ajuste ao vivo" : ""}), com o chaveamento oficial da FIFA. ${meta.playedMatches||0} jogos da Copa já entram com placar real.`
+        : `Probabilities from ${(meta.sims||0).toLocaleString("en-US")} Monte Carlo simulations (${engineLabel} engine${meta.live ? " + live adjustment" : ""}), using the official FIFA bracket. ${meta.playedMatches||0} played matches use real scores.`);
+
+      return (
+        <div id="app">
+          <div className="topbrand">
+            <div className="topbrand-inner">
+              <img src="uploads/pasted-1781528101936-0.png" alt="FIFA World Cup 2026" className="brand-logo" />
+              <div className="brand-divider" />
+              <div className="brand-info">
+                <span className="k">FIFA WORLD CUP 2026™</span>
+                <span className="s">
+                  {lang === "pt" ? "Painel de predições · 48 seleções" : "Predictions dashboard · 48 teams"}
+                  <span className="brand-hosts">
+                    <img src="https://flagcdn.com/w40/us.png" alt="USA"    className="flag" />
+                    <img src="https://flagcdn.com/w40/mx.png" alt="Mexico" className="flag" />
+                    <img src="https://flagcdn.com/w40/ca.png" alt="Canada" className="flag" />
+                  </span>
+                </span>
+              </div>
+              <div className="brand-spacer" />
+              <div className="lang">
+                <button className={lang === "pt" ? "on" : ""} onClick={() => switchLang("pt")}>PT</button>
+                <button className={lang === "en" ? "on" : ""} onClick={() => switchLang("en")}>EN</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="topnav">
+            <nav className="nav">
+              {NAV.map(n => (
+                <button key={n.id} className={tab === n.id ? "on" : ""} onClick={() => switchTab(n.id)}>
+                  <span className="ic">{n.ic}</span>{n.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          <main className="app">
+            {tab === "overview" && <HeroView    lang={lang} onPick={handleTeamPick} openPair={openPair} />}
+            {tab === "stages"   && <StagesView  lang={lang} onTeamPick={handleTeamPick} openPair={openPair} />}
+            {tab === "calendar" && <CalendarView lang={lang} openMatch={openMatch} initFilters={calendarRoute} onRouteChange={handleCalendarRoute} />}
+            {tab === "team"     && <TeamView    lang={lang} initId={jumpTeam} key={jumpTeam ?? "team"} openPair={openPair} onTeamRoute={handleTeamPick} />}
+            {tab === "compare"  && <CompareView lang={lang} openPair={openPair} initPair={compareRoute} onCompareRoute={handleCompareRoute} />}
+
+            <div className="datanote">
+              <span>📊</span>
+              <span><b>{lang === "pt" ? "Dados do modelo." : "Model data."}</b> {noteBody}</span>
+            </div>
+          </main>
+
+          <MatchModal lang={lang} entry={modalEntry} onClose={closeMatch} />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

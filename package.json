@@ -1,0 +1,13 @@
+{
+  "name": "copa2026-web",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Build de produção do dashboard Copa 2026 (sem Babel no browser).",
+  "scripts": {
+    "build:web": "node scripts/build_web.mjs",
+    "test:ui": "node tests/smoke_dashboard.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0"
+  }
+}
