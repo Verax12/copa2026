@@ -77,3 +77,23 @@ python -m wc2026.export_web --engine ensemble --live   # publica no painel
 
 O `flashscore.py` só LÊ o JSON (sem navegador, sem dependência nova). Quando há
 dados do Flashscore para um jogo, eles têm prioridade sobre o TheSportsDB.
+
+## Build de produção (sem Babel)
+
+O site publicado (`web/index.html`) é **gerado** por um bundle esbuild — não usa
+Babel no browser. Fluxo:
+
+- **`web/index.dev.html`** — versão de desenvolvimento (Babel no browser, edita os
+  `.jsx` e recarrega). Use para iterar rápido.
+- **`web/index.html`** — produção, gerada. Carrega `web/assets/app.js` (bundle).
+
+```bash
+npm install          # uma vez (instala o esbuild)
+npm run build:web    # gera web/assets/app.js + web/index.html (produção)
+npm run test:ui      # smoke test (Playwright) contra o index.html
+```
+
+⚠️ Depois de editar qualquer `.jsx` (ou o App em `index.dev.html`), rode
+`npm run build:web` e **commite** `web/index.html` + `web/assets/app.js`. O fluxo
+`/atualizar` (na nuvem) mexe só nos dados (`wc_data.js`), então não precisa de
+rebuild — o bundle commitado continua válido.
