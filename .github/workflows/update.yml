@@ -59,7 +59,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add results.csv goalscorers.csv shootouts.csv api_cache web/wc_data.js
+          # api_cache é gitignored (caches regeneráveis) — NÃO incluir aqui, senão
+          # `git add` de caminho ignorado falha sob `bash -e` e quebra o workflow.
+          git add results.csv goalscorers.csv shootouts.csv web/wc_data.js
           if git diff --cached --quiet; then
             echo "Nenhuma mudança nos dados."
           else
