@@ -167,9 +167,35 @@ function Modal({ open, onClose, children, labelledBy, initialFocusSelector }) {
   );
 }
 
+/* Selo do resultado favorito ("Brasil vence · 40%" / "Empate provável · 32%").
+   Deixa explícito quem o modelo aponta como favorito — o mesmo resultado a que o
+   placar previsto agora obedece. `size="sm"` para encaixar em tiles/linhas. */
+function FavoriteBadge({ ph, pd, pa, home, away, lang, size }) {
+  const pt = lang === "pt";
+  const probs = [ph, pd, pa];
+  const fav = probs.indexOf(Math.max(...probs));
+  const pct = Math.round(probs[fav] * 100);
+  const cls = "fav-badge " + (fav === 1 ? "draw" : "win") + (size ? " " + size : "");
+  if (fav === 1) {
+    return (
+      <span className={cls} title={pt ? "Resultado mais provável" : "Most likely result"}>
+        <span className="fav-ico" aria-hidden="true">🤝</span>
+        <b>{pt ? "Empate provável" : "Draw likely"}</b><em>{pct}%</em>
+      </span>
+    );
+  }
+  const team = fav === 0 ? home : away;
+  return (
+    <span className={cls} title={pt ? "Favorito ao resultado" : "Result favorite"}>
+      <Flag id={team} w={16} />
+      <b>{WC.name(team, lang)} {pt ? "vence" : "wins"}</b><em>{pct}%</em>
+    </span>
+  );
+}
+
 /* expõe para os outros arquivos babel */
 Object.assign(window, {
   D, WC,
-  I18N, Flag, TeamChip, roundLabel, Modal, clickable,
+  I18N, Flag, TeamChip, roundLabel, Modal, clickable, FavoriteBadge,
   useState, useMemo, useEffect, useRef
 });

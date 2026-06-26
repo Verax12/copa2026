@@ -992,3 +992,66 @@ button:focus:not(:focus-visible),
 .mm-top-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .mm-top-chip { font-family: var(--font-cond); font-size: 13px; color: var(--text-2); background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px; }
 .mm-top-chip b { font-family: var(--font-display); color: var(--brand-black); margin-right: 3px; }
+
+/* selo "cravou o placar" (placar exato) — separado do acerto de resultado.
+   O modelo pode errar o resultado favorito e ainda cravar o placar exato. */
+.mpg-exact { font-style: normal; margin-left: 4px; }
+.mm-cmp-mid .mm-exact { display: block; margin-top: 4px; font-family: var(--font-cond);
+  font-size: 10px; font-weight: 700; color: #b8860b; text-transform: uppercase; letter-spacing: .5px; }
+
+/* hero gerado do modal (jogos sem pôster oficial) — estilo Copa 2026:
+   blocos geométricos coloridos + bandeiras + marca "26" + data/estádio. */
+.mm-hero {
+  position: relative; overflow: hidden;
+  border-radius: var(--r-sm); margin-bottom: 4px;
+  min-height: 150px; padding: 18px 16px 12px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background:
+    linear-gradient(135deg, #5bb0e6 0 22%, transparent 22%),
+    linear-gradient(-135deg, #e8cf3a 0 20%, transparent 20%),
+    linear-gradient(45deg, #e0604f 0 24%, transparent 24%),
+    linear-gradient(-45deg, #3a4fa3 0 26%, transparent 26%),
+    linear-gradient(160deg, #1f2d6e, #2b3a8f);
+}
+.mm-hero::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.04), rgba(10,10,30,.30));
+}
+.mm-hero-row, .mm-hero-meta { position: relative; z-index: 1; }
+.mm-hero-row { display: flex; align-items: center; justify-content: center; gap: clamp(14px,4vw,30px); }
+.mm-hero-flag {
+  width: clamp(58px,15vw,82px); height: auto; aspect-ratio: 3 / 2; object-fit: cover;
+  border-radius: 8px; border: 2px solid rgba(255,255,255,.92);
+  box-shadow: 0 6px 18px rgba(0,0,0,.3);
+}
+.mm-hero-badge { text-align: center; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.45); }
+.mm-hero-26 { display: block; font-family: var(--font-display); font-size: clamp(40px,11vw,62px); line-height: .85; letter-spacing: 1px; }
+.mm-hero-cup { display: block; font-family: var(--font-cond); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; opacity: .92; }
+.mm-hero-meta {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px;
+  font-family: var(--font-cond); font-weight: 600; font-size: 11px; color: #fff;
+  background: rgba(0,0,0,.34); padding: 6px 12px; border-radius: 100px;
+}
+
+/* selo de FAVORITO ("Brasil vence · 40%" / "Empate provável · 32%").
+   Mostra o resultado que o modelo aponta — o mesmo a que o placar obedece. */
+.fav-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px;
+  border-radius: 999px; font-family: var(--font-cond); font-weight: 600; font-size: 12px;
+  border: 1.5px solid transparent; white-space: nowrap; }
+.fav-badge img { width: 18px; height: 12px; object-fit: cover; border-radius: 2px; box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+.fav-badge b { font-weight: 700; }
+.fav-badge em { font-style: normal; font-weight: 800; }
+.fav-badge.win { background: var(--teal-light); color: var(--teal-dark); border-color: rgba(0,155,140,.25); }
+.fav-badge.win em { color: var(--teal); }
+.fav-badge.draw { background: #ECECEC; color: #444; border-color: rgba(0,0,0,.12); }
+.fav-badge.draw em { color: #222; }
+.fav-badge.sm { padding: 2px 7px; font-size: 10.5px; gap: 4px; }
+.fav-badge.sm img { width: 15px; height: 10px; }
+
+/* linha "Favorito previsto: <selo>" no modal */
+.mm-fav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.mm-fav-lbl { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .5px;
+  font-size: 10px; font-weight: 700; color: var(--text-muted); }
+
+/* selo do favorito no tile do calendário */
+.mtile-fav { margin-top: 6px; display: flex; }

@@ -286,6 +286,7 @@ def build_team_adjustments(base_model, stats: pd.DataFrame) -> TeamAdjustments:
             d[k] += v
 
     # agrupa por jogo para obter os dois lados juntos
+    from .venue import expected_goals_with_venue
     for fid, g in stats.groupby("fixture"):
         if len(g) != 2:
             continue
@@ -293,8 +294,9 @@ def build_team_adjustments(base_model, stats: pd.DataFrame) -> TeamAdjustments:
         ta, tb = a_row["team"], b_row["team"]
         xg_a = xg_proxy(a_row["shots_on_target"], a_row["shots_total"])
         xg_b = xg_proxy(b_row["shots_on_target"], b_row["shots_total"])
-        # λ esperado pelo modelo (jogo neutro, como na Copa)
-        lam_a, lam_b = base_model.expected_goals(ta, tb, neutral=True)
+        # λ esperado pelo modelo: Copa neutra, exceto para México/EUA/Canadá
+        # quando enfrentam uma seleção não-anfitriã.
+        lam_a, lam_b = expected_goals_with_venue(base_model, ta, tb)
         bump(ta, xg_for=xg_a, xg_against=xg_b, lam_for=lam_a, lam_against=lam_b, n=1)
         bump(tb, xg_for=xg_b, xg_against=xg_a, lam_for=lam_b, lam_against=lam_a, n=1)
 

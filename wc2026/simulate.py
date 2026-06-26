@@ -9,10 +9,10 @@ Para cada uma das N simulações:
      com leve vantagem para o time de maior Elo).
 Ao fim, agrega em quantas simulações cada seleção foi campeã, finalista, etc.
 
-NOTA sobre o chaveamento: a alocação oficial dos 8 terceiros da FIFA é uma
-tabela fixa complexa. Aqui o mata-mata usa re-seeding por Elo (o melhor
-ranqueado enfrenta o pior restante a cada rodada) — uma aproximação honesta e
-fácil de trocar pelo bracket oficial depois.
+NOTA sobre mando: jogos da Copa são tratados como neutros, exceto quando uma das
+três seleções anfitriãs (México, EUA ou Canadá) enfrenta uma não-anfitriã. Nesse
+caso aplicamos a vantagem de mando do motor de gols ao anfitrião, sem tentar
+inferir torcida para outras seleções.
 """
 from __future__ import annotations
 
@@ -23,8 +23,9 @@ import pandas as pd
 
 from .elo import BASE_RATING
 from .goal_model import DixonColes
-from .groups import GROUPS, HOSTS
+from .groups import GROUPS
 from .bracket import resolve_r32, R16_PAIRS, QF_PAIRS, SF_PAIRS
+from .venue import score_matrix_with_venue
 
 
 def _played_lookup(played: pd.DataFrame) -> dict[tuple[str, str], tuple[int, int]]:
@@ -41,7 +42,7 @@ def _precompute(model: DixonColes, teams: list[str]) -> dict[tuple[str, str], np
         for a in teams:
             if h == a:
                 continue
-            m = model.score_matrix(h, a, neutral=True)
+            m = score_matrix_with_venue(model, h, a)
             cache[(h, a)] = (np.cumsum(m.ravel()), m.shape[1])
     return cache
 

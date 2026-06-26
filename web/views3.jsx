@@ -248,6 +248,11 @@ function MatchTile({ g, lang, onClick }) {
         <span className="mtile-stad">🏟️ {g.stadium}</span>
         {!g.played && <span className="mtile-pred">{pt ? "Prev." : "Pred."} {g.pred.score[0]}–{g.pred.score[1]}</span>}
       </div>
+      {!g.played && (
+        <div className="mtile-fav">
+          <FavoriteBadge ph={g.pred.ph} pd={g.pred.pd} pa={g.pred.pa} home={g.home} away={g.away} lang={lang} size="sm" />
+        </div>
+      )}
     </button>
   );
 }
@@ -299,6 +304,35 @@ function GoalsTimeline({ entry, lang }) {
 }
 
 /* ---------- MODAL DE DETALHE / PREVISÃO DE UM JOGO ---------- */
+/* Hero do modal: pôster oficial do TheSportsDB quando existe; senão, um banner
+   gerado no estilo Copa 2026 (bandeiras + marca + data/estádio) — assim TODO
+   jogo ganha o mesmo header visual. */
+function MatchPoster({ entry, f, k, lang }) {
+  const pt = lang === "pt";
+  const home = D.byId(entry.home), away = D.byId(entry.away);
+  const timeline = `${k.local || ""}${k.offset ? " " + k.offset : ""}`.trim();
+  const place = `${entry.stadium || ""}${entry.city ? " · " + entry.city : ""}`.trim();
+  const aria = `${WC.name(entry.home, lang)} × ${WC.name(entry.away, lang)}`;
+  if (entry.thumb) return <img className="mm-poster" src={entry.thumb} alt={aria} loading="lazy" />;
+  return (
+    <div className="mm-hero" role="img" aria-label={aria}>
+      <div className="mm-hero-row">
+        <img className="mm-hero-flag" src={WC.flag(home.iso, 160)} alt="" loading="lazy" />
+        <div className="mm-hero-badge">
+          <span className="mm-hero-26">26</span>
+          <span className="mm-hero-cup">FIFA · {pt ? "Copa do Mundo" : "World Cup"}</span>
+        </div>
+        <img className="mm-hero-flag" src={WC.flag(away.iso, 160)} alt="" loading="lazy" />
+      </div>
+      <div className="mm-hero-meta">
+        <span>📅 {f.wd}, {f.dd} {f.moLong} 2026</span>
+        {timeline ? <span>🕐 {timeline}</span> : null}
+        {place ? <span>🏟️ {place}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 function MatchModal({ lang, entry, onClose }) {
   const pt = lang === "pt";
   const open = !!entry;
@@ -313,7 +347,12 @@ function MatchModal({ lang, entry, onClose }) {
   let hit = null, exact = false;
   if (entry.played && entry.pre) {
     const oc = (a, b) => (a > b ? 0 : a === b ? 1 : 2);
-    hit = oc(entry.actual[0], entry.actual[1]) === oc(entry.pre.score[0], entry.pre.score[1]);
+    // "acertou o resultado" = V/E/D MAIS PROVÁVEL (argmax), coerente com o
+    // "acerto de resultado" do painel de Desempenho. "cravou o placar" (exact) é
+    // o placar exato, mostrado como selo 🎯 à parte — os dois podem divergir.
+    const probs = [entry.pre.ph, entry.pre.pd, entry.pre.pa];
+    const predOc = probs.indexOf(Math.max(...probs));
+    hit = predOc === oc(entry.actual[0], entry.actual[1]);
     exact = entry.actual[0] === entry.pre.score[0] && entry.actual[1] === entry.pre.score[1];
   }
 
@@ -325,8 +364,8 @@ function MatchModal({ lang, entry, onClose }) {
       </div>
 
       <div className="mm-body">
-        {/* poster/thumbnail do jogo (quando a fonte fornece) */}
-        {entry.thumb ? <img className="mm-poster" src={entry.thumb} alt="" loading="lazy" /> : null}
+        {/* hero do jogo: pôster oficial quando há, senão banner gerado */}
+        <MatchPoster entry={entry} f={f} k={k} lang={lang} />
 
         {/* placar / confronto */}
         <div className="mm-score" id="mm-title">
@@ -367,12 +406,16 @@ function MatchModal({ lang, entry, onClose }) {
             <div className="mm-cmp">
               <div><div className="lb">{pt ? "Real" : "Actual"}</div><div className="v">{entry.actual[0]}–{entry.actual[1]}</div></div>
               <div className="mm-cmp-mid">{hit ? "✅" : "❌"}<span>{
-                pt ? (exact ? "cravou o placar!" : hit ? "acertou o resultado" : "errou o resultado")
-                   : (exact ? "exact score!" : hit ? "right result" : "wrong result")
-              }</span></div>
+                pt ? (hit ? "acertou o resultado" : "errou o resultado")
+                   : (hit ? "right result" : "wrong result")
+              }</span>{exact && <span className="mm-exact" title={pt ? "o placar exato bateu" : "exact scoreline matched"}>🎯 {pt ? "cravou o placar!" : "exact score!"}</span>}</div>
               <div><div className="lb">{pt ? "Previsto" : "Predicted"}</div><div className="v" style={{ color: "var(--text-muted)" }}>{entry.pre.score[0]}–{entry.pre.score[1]}</div></div>
             </div>
             <div style={{ marginTop: "12px" }}><WDLBar ph={entry.pre.ph} pd={entry.pre.pd} pa={entry.pre.pa} lang={lang} /></div>
+            <div className="mm-fav">
+              <span className="mm-fav-lbl">{pt ? "Favorito previsto" : "Predicted favorite"}</span>
+              <FavoriteBadge ph={entry.pre.ph} pd={entry.pre.pd} pa={entry.pre.pa} home={entry.home} away={entry.away} lang={lang} />
+            </div>
           </div>
         )}
 
@@ -408,6 +451,10 @@ function MatchModal({ lang, entry, onClose }) {
               <div className="md-xg"><div className="lb">{pt ? "gols esperados (xG)" : "expected goals (xG)"}</div><div className="v">{entry.pred.xg[0]} – {entry.pred.xg[1]}</div></div>
             </div>
             <WDLBar ph={entry.pred.ph} pd={entry.pred.pd} pa={entry.pred.pa} lang={lang} />
+            <div className="mm-fav">
+              <span className="mm-fav-lbl">{pt ? "Favorito" : "Favorite"}</span>
+              <FavoriteBadge ph={entry.pred.ph} pd={entry.pred.pd} pa={entry.pred.pa} home={entry.home} away={entry.away} lang={lang} />
+            </div>
             {entry.pred.top && entry.pred.top.length ? (
               <div className="mm-top">
                 <div className="mm-top-lbl">{pt ? "Placares mais prováveis" : "Most likely scorelines"}</div>
@@ -418,8 +465,8 @@ function MatchModal({ lang, entry, onClose }) {
                 </div>
               </div>
             ) : null}
-            <div className="md-note">{pt ? "Placar mais provável segundo o modelo (ensemble). Empate alto é comum — veja as probabilidades acima."
-                                         : "Most likely scoreline per the (ensemble) model. Draws are common — see probabilities above."}</div>
+            <div className="md-note">{pt ? "O modelo primeiro aponta o resultado favorito (acima) e depois o placar mais provável dentro dele — por isso o placar nunca contradiz o favorito."
+                                         : "The model first picks the favored result (above), then the most likely scoreline within it — so the score never contradicts the favorite."}</div>
           </div>
         )}
 

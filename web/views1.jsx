@@ -103,6 +103,11 @@ function TrackRecord({ lang, openPair }) {
   if (!tr || !tr.summary || !tr.summary.n) return null;
   const s = tr.summary;
   const pt = lang === "pt";
+  // "acerto de resultado" = V/E/D pelo resultado MAIS PROVÁVEL (argmax das
+  // probabilidades) — métrica honesta da força do modelo. É SEPARADO de "cravou
+  // o placar" (placar exato), exibido como selo 🎯 à parte na linha do jogo e no
+  // modal; os dois podem divergir (ex.: favorito não venceu, mas o placar-moda
+  // bateu por coincidência).
   const resultCorrect = s.probCorrect ?? s.winnerCorrect;
   const resultAcc = s.probAcc ?? s.winnerAcc;
   const idByEn = (en) => { const t = D.teams.find(x => x.en === en); return t ? t.id : null; };
@@ -301,7 +306,9 @@ function TrackRecord({ lang, openPair }) {
                   <b>{nm(g.away)}</b>
                   {aId != null && <Flag id={aId} w={20} />}
                 </span>
-                <span className="mpg-pred">{pt ? "prev" : "pred"} {g.predScore[0]}-{g.predScore[1]}</span>
+                <span className="mpg-pred">{pt ? "prev" : "pred"} {g.predScore[0]}-{g.predScore[1]}
+                  {g.exactHit && <em className="mpg-exact" title={pt ? "cravou o placar exato" : "exact score nailed"}>🎯</em>}
+                </span>
                 <span className="mpg-probs">
                   <em style={{ color: "var(--red)" }}>{Math.round(g.ph * 100)}</em>
                   <em>{Math.round(g.pd * 100)}</em>

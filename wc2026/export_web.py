@@ -31,6 +31,7 @@ from .elo import compute_elo
 from .groups import GROUPS, all_teams
 from .shootout import calibrate, load_shootouts
 from .simulate import simulate
+from .scoreline import favored_scoreline
 from . import bracket as B
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -195,6 +196,7 @@ def build_calendar(idx: dict, model, played, track_record: dict) -> list[dict]:
     import numpy as np
     from .thesportsdb import CACHE
     from .live_form import normalize_team
+    from .venue import expected_goals_with_venue, score_matrix_with_venue
     fp = CACHE / "openfootball_2026.json"
     if not fp.exists():
         return []
@@ -245,10 +247,11 @@ def build_calendar(idx: dict, model, played, track_record: dict) -> list[dict]:
         h, a = normalize_team(m.get("team1", "")), normalize_team(m.get("team2", ""))
         if h not in idx or a not in idx:
             continue
-        M = model.score_matrix(h, a, neutral=True)
-        gi, gj = np.unravel_index(int(M.argmax()), M.shape)
-        ph = float(np.tril(M, -1).sum()); pdr = float(np.trace(M)); pa = float(np.triu(M, 1).sum())
-        lh, la = model.expected_goals(h, a, neutral=True)
+        M = score_matrix_with_venue(model, h, a)
+        # placar coerente com o resultado favorito (não a moda global) — evita
+        # "previsto 1-1" junto de "favorito: mandante vence".
+        _, (gi, gj), (ph, pdr, pa) = favored_scoreline(M)
+        lh, la = expected_goals_with_venue(model, h, a)
         # top 3 placares mais prováveis (para o modal de jogo futuro)
         flat = M.ravel()
         topk = np.argsort(flat)[::-1][:3]
@@ -427,6 +430,7 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
     # o placar exibido é a moda da matriz de placares (argmax) — simétrico por
     # construção, então o mesmo jogo mostra o mesmo placar de qualquer perspectiva.
     import numpy as np
+    from .venue import expected_goals_with_venue, score_matrix_with_venue
     n = len(teams_order)
     lambdas = [[[0.0, 0.0] for _ in range(n)] for _ in range(n)]
     scorelines = [[[0, 0] for _ in range(n)] for _ in range(n)]
@@ -437,10 +441,11 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
         for j, a in enumerate(teams_order):
             if i == j:
                 continue
-            lh, la = model.expected_goals(h, a, neutral=True)
+            lh, la = expected_goals_with_venue(model, h, a)
             lambdas[i][j] = [round(float(lh), 3), round(float(la), 3)]
-            M = model.score_matrix(h, a, neutral=True)
-            gi, gj = np.unravel_index(int(M.argmax()), M.shape)
+            M = score_matrix_with_venue(model, h, a)
+            # placar coerente com o resultado favorito (vide wc2026/scoreline.py)
+            _, (gi, gj), _ = favored_scoreline(M)
             scorelines[i][j] = [int(gi), int(gj)]
             # moda restrita às vitórias do mandante (linha > coluna)
             rows, cols = np.indices(M.shape)
@@ -492,6 +497,7 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
             "engine": engine, "sims": sims, "live": live, "calibrated": calibrated,
             "playedMatches": int(len(played)),
             "topFavorite": teams[seeds[0]]["en"] if seeds else None,
+            "hostAdvantageTeams": sorted(["Canada", "Mexico", "United States"]),
         },
     }
 

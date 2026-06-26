@@ -24,6 +24,7 @@ import numpy as np
 from .data import load_matches, load_played_wc2026
 from .elo import compute_elo, win_probabilities, HOME_ADVANTAGE, BASE_RATING
 from .outcome_calibration import CalibratedGoalModel, fit_outcome_calibrator
+from .scoreline import favored_scoreline
 
 CUP_START = "2026-06-11"
 
@@ -65,14 +66,14 @@ def backtest(cutoff: str = CUP_START, engine: str = "ensemble",
         neutral = bool(r.neutral)
         ph, pd_, pa = model.outcome_probs(r.home_team, r.away_team, neutral=neutral)
         M = model.score_matrix(r.home_team, r.away_team, neutral=neutral)
-        gi, gj = np.unravel_index(int(M.argmax()), M.shape)
+        # placar previsto em 2 passos: resultado favorito (argmax das probs) e o
+        # placar mais provável DENTRO dele — assim "prev. X-Y" nunca contradiz o
+        # favorito. Como pred segue o favorito, winnerHit == probHit por construção.
+        prob_pred, (gi, gj), _ = favored_scoreline(M, probs=(ph, pd_, pa))
 
         actual = _outcome(r.home_score, r.away_score)
         probs = [ph, pd_, pa]
-        # "acerto do resultado" = resultado (V/E/D) do PLACAR PREVISTO (a moda exibida)
-        # vs o real — coerente com o que o painel mostra ("prev. X-Y").
         pred = _outcome(int(gi), int(gj))
-        prob_pred = int(np.argmax(probs))
         I = [0, 0, 0]; I[actual] = 1
 
         # baseline Elo (pela probabilidade, só como referência)
