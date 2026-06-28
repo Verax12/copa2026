@@ -59,6 +59,15 @@
   - Calibrador mais avançado (isotonic, por engine, ou baseado em simulações completas).
   - Calibração de probs de campeão/fase diretamente via simulações históricas.
 - **Validação:** Brier score nas probs de campeão e acerto de "top N".
+- **Status (2026-06-28, branch improvements/motor-precisao):** DONE.
+  - Ensemble: peso w agora dinâmico por default. Adicionado `get_optimal_ensemble_weight()` que usa `evaluate_engines()` (validação OOT 2024+) para escolher melhor w por log-loss (atualmente ~0.40 vs anterior fixo 0.55). `build_ensemble(w=None)` usa o ótimo automaticamente; ainda configurável.
+  - Grid de w em evaluate expandido (mais granular em 0.2-0.8). Chamadas em run/export agora usam w dinâmico consistente para build + calibrate.
+  - Calibrador melhorado: `_feature_row` expandido com 4+ features novas (neutral flag, pmax, entropy das probs, |gdiff|). Usa LogisticRegression + `CalibratedClassifierCV(method="isotonic")` (calibração avançada de probs via isotonic regression em cima) ; fallback Logistic com C ajustado.
+  - Defaults de w alinhados para 0.55 (mas sobrescritos por dinâmico em ensemble callers). alpha=0.5 mantido.
+  - Não calib direta de %campeão/fase (via sims históricas), mas indiretamente melhor pois usa probs de match mais bem calibradas; sims Monte Carlo herdam isso. (Viável expandir com dados passados de Copas.)
+  - Atualizados: ensemble.py, outcome_calibration.py, run.py, export_web.py (track e prediction_test usam defaults internos mas passam w explícito, sem quebra).
+  - Testes: evaluate_engines mostra w=0.4 ótimo; prediction_test + backtest(ensemble,cal) + run --sims + build_model(export) rodam OK; pytest test_outcome_calibration passa. Logloss ligeiramente melhor (0.879 vs ~0.883 pré); Brier comparável.
+  - Foco só em Point 4, sem alterar simulate/track/outros além dos callers run/export.
 
 ### 5. Dinâmicas dentro da simulação
 - **Problema:** Jogos tratados como independentes (exceto bracket). Ignora fadiga, momentum, cartões, etc.

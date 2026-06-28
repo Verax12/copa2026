@@ -80,13 +80,20 @@ def main() -> None:
         goal_ml = train(feats)
         state = current_state(matches)
         model = MLGoalModel(goal_ml, state, all_teams())
+        w = 0.0  # n/a
     elif args.engine == "ensemble":
         print("3/5  Ensemble (Dixon-Coles + ML)...")
-        from .ensemble import build_ensemble
-        model = build_ensemble(matches, w=0.5)
+        from .ensemble import build_ensemble, get_optimal_ensemble_weight
+        w = 0.55
+        try:
+            w = get_optimal_ensemble_weight()  # peso dinâmico via validação (Point 4)
+        except Exception:
+            pass
+        model = build_ensemble(matches, w=w)
     else:
         print("3/5  Ajustando modelo de gols Dixon-Coles...")
         model = fit_dixon_coles(matches)
+        w = 1.0  # n/a
 
     if args.live:
         from .live_form import (parse_cache, build_team_adjustments,
@@ -105,7 +112,8 @@ def main() -> None:
     if not args.no_calibration:
         print("     Calibrando probabilidades V/E/D em validação temporal...")
         from .outcome_calibration import calibrate_model
-        model = calibrate_model(model, matches, engine=args.engine, w=0.5)
+        cal_w = w if args.engine == "ensemble" else 0.5
+        model = calibrate_model(model, matches, engine=args.engine, w=cal_w)
 
     live_str = " + live adjustment" if args.live else ""
     cal_str = "" if args.no_calibration else " + calibração V/E/D"

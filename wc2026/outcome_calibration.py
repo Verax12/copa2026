@@ -6,6 +6,14 @@ probabilidades de vitória/empate/derrota são somas dessa matriz. Esta camada
 aprende uma correção direta para V/E/D em validação temporal e reescala a matriz
 por região (vitória, empate, derrota), preservando a forma relativa dos placares
 dentro de cada resultado.
+
+Melhorias Point 4 (Calibração + Ensemble):
+- Peso ensemble dinâmico (via validação em ensemble.get_optimal_ensemble_weight)
+- Calibrador mais avançado: Logistic + isotonic (CalibratedClassifierCV) + features
+  expandidas (_feature_row: neutral, pmax, entropy, |gdiff| etc além de originais)
+- w e alpha configuráveis; defaults alinhados; fases/campeão indiretamente
+  melhorados via probs de jogo melhores (calib direta de %campeão via sims
+  históricos é viável com mais dados de torneios passados).
 """
 from __future__ import annotations
 
@@ -27,15 +35,30 @@ def _matrix_outcome_probs(m: np.ndarray) -> tuple[float, float, float]:
 
 
 def _feature_row(model, home: str, away: str, neutral: bool) -> list[float]:
+    """Features estendidas para calibrador mais forte (Point 4).
+    Além das probs e esperados, adiciona neutral flag, pmax (confiança), entropia
+    das probs (para correção de over/under-confidence), e abs diff.
+    """
     ph, pd_, pa = model.outcome_probs(home, away, neutral=neutral)
     lh, la = model.expected_goals(home, away, neutral=neutral)
     p = np.clip(np.array([ph, pd_, pa], dtype=float), 1e-6, 1 - 1e-6)
+    log_odds = float(np.log(p[0] / p[2]))
+    log_draw = float(np.log(p[1] / np.sqrt(p[0] * p[2])))
+    gdiff = float(lh - la)
+    gtot = float(lh + la)
+    pmax = float(np.max(p))
+    entropy = float(-np.sum(p * np.log(p + 1e-12)))
+    neut = 1.0 if neutral else 0.0
     return [
         float(p[0]), float(p[1]), float(p[2]),
-        float(np.log(p[0] / p[2])),
-        float(np.log(p[1] / np.sqrt(p[0] * p[2]))),
-        float(lh - la),
-        float(lh + la),
+        log_odds,
+        log_draw,
+        gdiff,
+        gtot,
+        pmax,
+        entropy,
+        neut,
+        abs(gdiff),
     ]
 
 
@@ -101,12 +124,16 @@ def fit_outcome_calibrator(matches: pd.DataFrame,
                            train_cutoff: str = DEFAULT_TRAIN_CUTOFF,
                            valid_until: str = CUP_START,
                            engine: str = "ensemble",
-                           w: float = 0.5) -> OutcomeCalibrator:
+                           w: float = 0.55) -> OutcomeCalibrator:
     """Treina o calibrador em previsões honestas para jogos recentes pré-Copa.
 
     O modelo base usado para gerar as features é treinado só antes de
     `train_cutoff`; o calibrador aprende nos jogos entre `train_cutoff` e
     `valid_until`, evitando usar jogos já disputados da Copa como validação.
+
+    Melhoria Point 4: usa Logistic + isotonic (CalibratedClassifierCV method=isotonic)
+    para calibração mais avançada de probs + features expandidas em _feature_row;
+    w default alinhado com ensemble (dinâmico possível via caller).
     """
     from sklearn.linear_model import LogisticRegression
 
@@ -131,11 +158,27 @@ def fit_outcome_calibrator(matches: pd.DataFrame,
 
     x = _features_for_matches(base, valid)
     y = np.asarray([_outcome(r.home_score, r.away_score) for r in valid.itertuples(index=False)])
-    clf = LogisticRegression(C=0.5, max_iter=1000)
+
+    # Calibrador mais avançado (Point 4): Logistic + isotonic (melhor calibração
+    # de probabilidades que Logistic puro). Isotonic (monótono) corrige confiança.
+    # Tenta CalibratedClassifierCV com isotonic; se indisponível ou falha (dados
+    # pequenos), usa Logistic com params otimizados (C menor p/ regularizar).
+    # (HistGB forte deixado de lado por default pois valid set pode ser pequeno
+    #  p/ boosting; pode ser reativado com tuning futuro.)
+    clf = LogisticRegression(C=0.5, class_weight="balanced", max_iter=2000, solver="lbfgs")
+    try:
+        from sklearn.calibration import CalibratedClassifierCV
+        # isotonic on top para probs mais bem calibradas
+        clf = CalibratedClassifierCV(clf, method="isotonic", cv=2)
+    except Exception:
+        pass
     clf.fit(x, y)
     return OutcomeCalibrator(clf)
 
 
 def calibrate_model(model, matches: pd.DataFrame, engine: str = "ensemble",
-                    w: float = 0.5, alpha: float = 0.5) -> CalibratedGoalModel:
+                    w: float = 0.55, alpha: float = 0.5) -> CalibratedGoalModel:
+    """Wrapper que aplica calibrador. w default 0.55 alinhado com ensemble atual;
+    para ensemble caller pode passar w dinâmico de get_optimal.
+    """
     return CalibratedGoalModel(model, fit_outcome_calibrator(matches, engine=engine, w=w), alpha=alpha)

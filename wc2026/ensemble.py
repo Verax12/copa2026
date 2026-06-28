@@ -10,6 +10,9 @@ V/E/D abaixo reflete exatamente o que o motor de ensemble produz.
 
 `evaluate_engines()` compara Dixon, ML e o blend OUT-OF-TIME (treino < cutoff,
 teste depois) por log-loss/Brier — a régua honesta pra decidir se o ensemble vale.
+
+Peso w é agora dinâmico por padrão (get_optimal_ensemble_weight via validação);
+pode ser sobrescrito em build_ensemble(w=...).
 """
 from __future__ import annotations
 
@@ -46,7 +49,22 @@ class EnsembleGoalModel:
         return float(np.tril(M, -1).sum()), float(np.trace(M)), float(np.triu(M, 1).sum())
 
 
-def build_ensemble(matches: pd.DataFrame, w: float = 0.5) -> EnsembleGoalModel:
+def get_optimal_ensemble_weight(cutoff: str = "2024-01-01", dc_rho: float = -0.05) -> float:
+    """Escolhe dinamicamente o melhor w (peso Dixon) via validação OUT-OF-TIME.
+    Usa evaluate_engines para achar o w com menor log-loss em dados holdout.
+    Isso torna o ensemble weight 'dinâmico' / baseado em validação em vez de fixo 50/50.
+    """
+    df = evaluate_engines(cutoff=cutoff, dc_rho=dc_rho)
+    best_w = float(df.iloc[0]["w_dixon"])
+    return best_w
+
+
+def build_ensemble(matches: pd.DataFrame, w: float | None = None) -> EnsembleGoalModel:
+    """Constrói ensemble. Se w=None (default), usa peso ótimo encontrado por validação
+    em evaluate_engines (baseado em dados históricos recentes). Permite w configurável.
+    """
+    if w is None:
+        w = get_optimal_ensemble_weight()
     dc = fit_dixon_coles(matches)
     ml_gm = train(build_features(matches))
     ml = MLGoalModel(ml_gm, current_state(matches), all_teams())
@@ -86,7 +104,8 @@ def evaluate_engines(cutoff: str = "2024-01-01", dc_rho: float = -0.05) -> pd.Da
     y = test_df["y_result"].to_numpy()
 
     rows = []
-    for w in [1.0, 0.75, 0.6, 0.5, 0.4, 0.25, 0.0]:
+    # grade mais fina para melhor escolha dinâmica de w (foco em região ótima ~0.3-0.6)
+    for w in [1.0, 0.8, 0.7, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.1, 0.0]:
         blend = w * dc_p + (1 - w) * ml_p
         acc, ll, br = _scores(blend, y)
         label = ("Dixon-Coles" if w == 1.0 else "ML" if w == 0.0 else f"Ensemble w={w:g}")
@@ -101,3 +120,5 @@ if __name__ == "__main__":
     print(df.to_string(index=False))
     best = df.iloc[0]
     print(f"\nMelhor por log-loss: {best['motor']} (log-loss {best['log_loss']}, brier {best['brier']})")
+    opt = get_optimal_ensemble_weight()
+    print(f"Peso ótimo dinâmico (get_optimal): w_dixon={opt}")

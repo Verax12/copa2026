@@ -331,12 +331,19 @@ def build_model(engine: str, live: bool, calibrated: bool = True):
         from .ml_model import train, MLGoalModel
         feats = build_features(matches)
         model = MLGoalModel(train(feats), current_state(matches), all_teams())
+        w = 0.0
     elif engine == "ensemble":
-        from .ensemble import build_ensemble
-        model = build_ensemble(matches, w=0.5)   # blend Dixon-Coles + ML (vence out-of-time)
+        from .ensemble import build_ensemble, get_optimal_ensemble_weight
+        w = 0.55
+        try:
+            w = get_optimal_ensemble_weight()  # peso dinâmico via validação (Point 4)
+        except Exception:
+            pass
+        model = build_ensemble(matches, w=w)   # blend Dixon-Coles + ML (dinâmico)
     else:
         from .goal_model import fit_dixon_coles
         model = fit_dixon_coles(matches)
+        w = 1.0
     if live:
         from .live_form import gather_live_stats, build_team_adjustments, AdjustedGoalModel
         stats = gather_live_stats()
@@ -344,7 +351,8 @@ def build_model(engine: str, live: bool, calibrated: bool = True):
             model = AdjustedGoalModel(model, build_team_adjustments(model, stats))
     if calibrated:
         from .outcome_calibration import calibrate_model
-        model = calibrate_model(model, matches, engine=engine, w=0.5)
+        cal_w = w if engine == "ensemble" else 0.5
+        model = calibrate_model(model, matches, engine=engine, w=cal_w)
     return matches, played, elo, beta, model
 
 
