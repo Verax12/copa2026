@@ -67,6 +67,7 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
     advance = defaultdict(int)  # passou da fase de grupos
     pos_count = defaultdict(lambda: [0, 0, 0, 0])  # nº de vezes em 1º/2º/3º/4º do grupo
     pts_sum = defaultdict(float)                    # soma de pontos no grupo (p/ média)
+    games_played = defaultdict(int)                 # for fatigue dynamics (point 5)
 
     pairs = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
 
@@ -76,10 +77,24 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
         if (a, h) in real:                # confronto real com mando invertido
             ag, hg = real[(a, h)]
             return hg, ag
+        # Point 5: simple fatigue dynamics (reduce expected after many games)
+        fat_h = min(0.12, 0.04 * max(0, games_played[h] - 2))
+        fat_a = min(0.12, 0.04 * max(0, games_played[a] - 2))
         if hasattr(model, 'sample_score'):
-            # use model's sample which may include dispersion
-            return model.sample_score(h, a, rng, neutral=True)
-        return _sample(cache, (h, a), rng)
+            # Temporarily adjust by monkey for sample, but since sample uses expected, we adjust post if needed
+            g1, g2 = model.sample_score(h, a, rng, neutral=True)
+            # crude: reduce winner chance slightly, but for simplicity reduce scores
+            g1 = max(0, int(g1 * (1 - fat_h)))
+            g2 = max(0, int(g2 * (1 - fat_a)))
+            games_played[h] += 1
+            games_played[a] += 1
+            return g1, g2
+        g1, g2 = _sample(cache, (h, a), rng)
+        g1 = max(0, int(g1 * (1 - fat_h)))
+        g2 = max(0, int(g2 * (1 - fat_a)))
+        games_played[h] += 1
+        games_played[a] += 1
+        return g1, g2
 
     def knockout(h: str, a: str) -> str:
         hg, ag = _sample(cache, (h, a), rng)
