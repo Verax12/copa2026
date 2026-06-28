@@ -68,6 +68,17 @@
   - Probabilidade de cartões vermelhos e impacto (redução de força).
   - Correlação entre λs de jogos consecutivos da mesma seleção.
 - **Validação:** Ver se distribuições de resultados no mata-mata ficam mais realistas vs histórico de Copas.
+- **Status (2026-06-28, implemented on improvements/motor-precisao):** DONE.
+  - Basic count fatigue in simulate.py evolved to full dynamics.
+  - Improved fatigue using games count + rest days (dates from schedule matchdays + KO rounds).
+  - Simple red card: per-team prob ~2.2%, impact ~22% goal reduction if drawn.
+  - Momentum: streak from recent (within-sim + init from played) +/- ~3.5% per unit.
+  - Config via `dynamics=dict(...)` kwarg to `simulate()` (fatigue/red_cards/momentum + tunable factors). Defaults ON for all runs.
+  - Groups simulated in chrono md order for state carry; KO rounds use spaced dates + apply dynamics.
+  - Real matches use fixed scores (no dyn adjust) but update counts/dates for subsequent.
+  - Tests (test_bracket invariants + full sums 100/200/400) + manual + `run.py --sims 100` pass end-to-end.
+  - Still works for groups+knockout. Callers unchanged (default enables).
+  - No other files changed for this point.
 
 ## Próximos Passos
 - Implementar ponto por ponto na branch.

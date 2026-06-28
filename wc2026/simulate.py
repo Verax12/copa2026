@@ -9,6 +9,15 @@ Para cada uma das N simulações:
      com leve vantagem para o time de maior Elo).
 Ao fim, agrega em quantas simulações cada seleção foi campeã, finalista, etc.
 
+Dinâmicas (Point 5 do roadmap):
+  - Fadiga melhorada: baseada em #jogos + dias de descanso (usando datas dos jogos).
+  - Cartões vermelhos: probabilidade simples por time por jogo, reduzindo gols se ocorrer.
+  - Momentum: forma recente (resultados simulados) afeta performance no próximo jogo.
+  Configurável via dict `dynamics` (fatigue, red_cards, momentum, fatores).
+  Jogos reais não sofrem ajuste dinâmico (usam placar fixo), mas contam para contagem/última data.
+  Simula grupos em ordem cronológica aproximada (matchdays) para propagar estado corretamente.
+  KO também usa dinâmicas com datas de rodadas.
+
 NOTA sobre mando: jogos da Copa são tratados como neutros, exceto quando uma das
 três seleções anfitriãs (México, EUA ou Canadá) enfrenta uma não-anfitriã. Nesse
 caso aplicamos a vantagem de mando do motor de gols ao anfitrião, sem tentar
@@ -54,7 +63,22 @@ def _sample(cache, key, rng) -> tuple[int, int]:
 
 
 def simulate(model, elo: dict[str, float], played: pd.DataFrame,
-             n_sims: int = 10000, seed: int = 42, shootout_beta: float = 0.0011) -> pd.DataFrame:
+             n_sims: int = 10000, seed: int = 42, shootout_beta: float = 0.0011,
+             dynamics: dict | None = None) -> pd.DataFrame:
+    """Run full tournament MC sims. dynamics dict enables/configs in-sim dynamics (Point 5)."""
+    if dynamics is None:
+        dynamics = {}
+    # defaults: conservative values for realism without over-effect
+    enable_fatigue = dynamics.get("fatigue", True)
+    enable_reds = dynamics.get("red_cards", True)
+    enable_momentum = dynamics.get("momentum", True)
+    fatigue_per_game = float(dynamics.get("fatigue_per_game", 0.035))
+    max_fatigue = float(dynamics.get("max_fatigue", 0.15))
+    rest_penalty = float(dynamics.get("rest_penalty", 0.025))  # extra fatigue for <4 rest days
+    red_prob = float(dynamics.get("red_card_prob", 0.022))
+    red_impact = float(dynamics.get("red_impact", 0.22))
+    mom_factor = float(dynamics.get("momentum_factor", 0.035))
+
     rng = np.random.default_rng(seed)
     teams = [t for g in GROUPS.values() for t in g]
     cache = _precompute(model, teams)
@@ -67,37 +91,150 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
     advance = defaultdict(int)  # passou da fase de grupos
     pos_count = defaultdict(lambda: [0, 0, 0, 0])  # nº de vezes em 1º/2º/3º/4º do grupo
     pts_sum = defaultdict(float)                    # soma de pontos no grupo (p/ média)
-    games_played = defaultdict(int)                 # for fatigue dynamics (point 5)
 
-    pairs = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+    # Precompute initial last dates + momentum streak from real played (chronological)
+    last_real: dict[str, pd.Timestamp] = {}
+    recent_pts: dict[str, list[int]] = defaultdict(list)
+    if not played.empty:
+        for r in played.sort_values("date").itertuples(index=False):
+            d = pd.Timestamp(r.date)
+            ht, at = r.home_team, r.away_team
+            hs, as_ = int(r.home_score), int(r.away_score)
+            last_real[ht] = d
+            last_real[at] = d
+            if hs > as_:
+                recent_pts[ht].append(3)
+                recent_pts[at].append(0)
+            elif as_ > hs:
+                recent_pts[ht].append(0)
+                recent_pts[at].append(3)
+            else:
+                recent_pts[ht].append(1)
+                recent_pts[at].append(1)
+    init_momentum: dict[str, float] = {}
+    for t in teams:
+        pts = recent_pts.get(t, [])[-3:]
+        # net form: positive good (wins contribute +)
+        net = sum((p - 1) for p in pts) / 2.0
+        init_momentum[t] = float(np.clip(net, -2.5, 2.5))
 
-    def play(h: str, a: str) -> tuple[int, int]:
+    # matchday dates (approx, based on 2026 schedule; groups staggered but sufficient)
+    MD_DATES: list[pd.Timestamp] = [
+        pd.Timestamp("2026-06-12"),
+        pd.Timestamp("2026-06-19"),
+        pd.Timestamp("2026-06-25"),
+    ]
+    # partition of pairs so each "md" each team plays exactly once; process in chrono order
+    MD_PAIRS: list[list[tuple[int, int]]] = [
+        [(0, 1), (2, 3)],
+        [(0, 2), (1, 3)],
+        [(0, 3), (1, 2)],
+    ]
+
+    # KO round dates for rest/fatigue between rounds
+    KO_DATES: dict[str, pd.Timestamp] = {
+        "r32": pd.Timestamp("2026-06-30"),
+        "r16": pd.Timestamp("2026-07-05"),
+        "qf": pd.Timestamp("2026-07-10"),
+        "sf": pd.Timestamp("2026-07-14"),
+        "final": pd.Timestamp("2026-07-19"),
+    }
+
+    def _match_score(h: str, a: str, match_date: pd.Timestamp | None = None) -> tuple[int, int]:
+        """Sample (or lookup real) score, applying dynamics if enabled. Updates state only for simulated matches.
+        match_date used for rest days calc (fatigue). Always counts games for later fatigue even on reals.
+        """
+        if match_date is None:
+            match_date = pd.Timestamp("2026-06-20")
+
         if (h, a) in real:
-            return real[(h, a)]
-        if (a, h) in real:                # confronto real com mando invertido
-            ag, hg = real[(a, h)]
-            return hg, ag
-        # Point 5: simple fatigue dynamics (reduce expected after many games)
-        fat_h = min(0.12, 0.04 * max(0, games_played[h] - 2))
-        fat_a = min(0.12, 0.04 * max(0, games_played[a] - 2))
-        if hasattr(model, 'sample_score'):
-            # Temporarily adjust by monkey for sample, but since sample uses expected, we adjust post if needed
-            g1, g2 = model.sample_score(h, a, rng, neutral=True)
-            # crude: reduce winner chance slightly, but for simplicity reduce scores
-            g1 = max(0, int(g1 * (1 - fat_h)))
-            g2 = max(0, int(g2 * (1 - fat_a)))
+            hg, ag = real[(h, a)]
             games_played[h] += 1
             games_played[a] += 1
-            return g1, g2
-        g1, g2 = _sample(cache, (h, a), rng)
-        g1 = max(0, int(g1 * (1 - fat_h)))
-        g2 = max(0, int(g2 * (1 - fat_a)))
+            last_date[h] = max(last_date.get(h, match_date), match_date)
+            last_date[a] = max(last_date.get(a, match_date), match_date)
+            return hg, ag
+        if (a, h) in real:  # real with reversed home/away
+            ag, hg = real[(a, h)]
+            games_played[h] += 1
+            games_played[a] += 1
+            last_date[h] = max(last_date.get(h, match_date), match_date)
+            last_date[a] = max(last_date.get(a, match_date), match_date)
+            return hg, ag
+
+        # --- simulated match: apply dynamics ---
+        # rest days
+        prev_h = last_date.get(h, match_date - pd.Timedelta(days=7))
+        prev_a = last_date.get(a, match_date - pd.Timedelta(days=7))
+        rest_h = max(0, (match_date - prev_h).days)
+        rest_a = max(0, (match_date - prev_a).days)
+
+        fat_h = 0.0
+        fat_a = 0.0
+        if enable_fatigue:
+            gp_h = games_played.get(h, 0)
+            gp_a = games_played.get(a, 0)
+            fat_base_h = min(max_fatigue, fatigue_per_game * max(0, gp_h - 2))
+            fat_base_a = min(max_fatigue, fatigue_per_game * max(0, gp_a - 2))
+            short_h = max(0, (4 - rest_h)) * rest_penalty
+            short_a = max(0, (4 - rest_a)) * rest_penalty
+            fat_h = min(max_fatigue, fat_base_h + short_h)
+            fat_a = min(max_fatigue, fat_base_a + short_a)
+
+        mom_h = 0.0
+        mom_a = 0.0
+        if enable_momentum:
+            m_h = momentum.get(h, 0.0)
+            m_a = momentum.get(a, 0.0)
+            mom_h = float(np.clip(m_h * mom_factor, -0.10, 0.10))
+            mom_a = float(np.clip(m_a * mom_factor, -0.10, 0.10))
+
+        adj_h = max(0.55, 1.0 - fat_h + mom_h)
+        adj_a = max(0.55, 1.0 - fat_a + mom_a)
+
+        if hasattr(model, "sample_score"):
+            g1, g2 = model.sample_score(h, a, rng, neutral=True)
+            g1 = max(0, int(g1 * adj_h))
+            g2 = max(0, int(g2 * adj_a))
+        else:
+            g1, g2 = _sample(cache, (h, a), rng)
+            g1 = max(0, int(g1 * adj_h))
+            g2 = max(0, int(g2 * adj_a))
+
+        # red cards (independent per team)
+        if enable_reds:
+            if rng.random() < red_prob:
+                g1 = max(0, int(g1 * (1.0 - red_impact)))
+            if rng.random() < red_prob:
+                g2 = max(0, int(g2 * (1.0 - red_impact)))
+
+        # commit state for this match
         games_played[h] += 1
         games_played[a] += 1
+        last_date[h] = match_date
+        last_date[a] = match_date
+
+        # momentum update from *this* outcome (sim only)
+        if enable_momentum:
+            if g1 > g2:
+                momentum[h] = min(3.0, momentum.get(h, 0.0) + 1.0)
+                momentum[a] = max(-3.0, momentum.get(a, 0.0) - 1.0)
+            elif g2 > g1:
+                momentum[h] = max(-3.0, momentum.get(h, 0.0) - 1.0)
+                momentum[a] = min(3.0, momentum.get(a, 0.0) + 1.0)
+            else:
+                momentum[h] = momentum.get(h, 0.0) * 0.6
+                momentum[a] = momentum.get(a, 0.0) * 0.6
+
         return g1, g2
 
-    def knockout(h: str, a: str) -> str:
-        hg, ag = _sample(cache, (h, a), rng)
+    # legacy alias for minimal diff in group code
+    def play(h: str, a: str, match_date: pd.Timestamp | None = None) -> tuple[int, int]:
+        return _match_score(h, a, match_date)
+
+    def knockout(h: str, a: str, match_date: pd.Timestamp | None = None) -> str:
+        """Knockout match with dynamics (samples score via _match_score then decides)."""
+        hg, ag = _match_score(h, a, match_date)
         if hg > ag:
             return h
         if ag > hg:
@@ -107,24 +244,47 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
         return h if rng.random() < pa else a
 
     for _ in range(n_sims):
+        # per-simulation state for dynamics (Point 5)
+        games_played: dict[str, int] = defaultdict(int)
+        last_date: dict[str, pd.Timestamp] = {t: last_real.get(t, pd.Timestamp("2026-06-01")) for t in teams}
+        momentum: dict[str, float] = {t: init_momentum.get(t, 0.0) for t in teams}
+
         thirds = []                 # (pts, sg, gf, gname) dos terceiros
         qualified = {}              # rótulo -> time (ex.: "1A", "2C")
         third_by_group = {}         # gname -> time que terminou em 3º
 
+        # init pts/gf/ga per group (accumulate across matchdays)
+        group_pts: dict[str, dict[str, int]] = {}
+        group_gf: dict[str, dict[str, int]] = {}
+        group_ga: dict[str, dict[str, int]] = {}
         for gname, gteams in GROUPS.items():
-            pts = {t: 0 for t in gteams}
-            gf = {t: 0 for t in gteams}
-            ga = {t: 0 for t in gteams}
-            for i, j in pairs:
-                h, a = gteams[i], gteams[j]
-                hg, ag = play(h, a)
-                gf[h] += hg; ga[h] += ag; gf[a] += ag; ga[a] += hg
-                if hg > ag:
-                    pts[h] += 3
-                elif ag > hg:
-                    pts[a] += 3
-                else:
-                    pts[h] += 1; pts[a] += 1
+            group_pts[gname] = {t: 0 for t in gteams}
+            group_gf[gname] = {t: 0 for t in gteams}
+            group_ga[gname] = {t: 0 for t in gteams}
+
+        # group stage in matchday order (chrono) for correct rest/momentum/fatigue
+        for md_idx, md_pairs in enumerate(MD_PAIRS):
+            md_date = MD_DATES[md_idx]
+            for gname, gteams in GROUPS.items():
+                pts = group_pts[gname]
+                gf = group_gf[gname]
+                ga = group_ga[gname]
+                for i, j in md_pairs:
+                    h, a = gteams[i], gteams[j]
+                    hg, ag = play(h, a, md_date)
+                    gf[h] += hg; ga[h] += ag; gf[a] += ag; ga[a] += hg
+                    if hg > ag:
+                        pts[h] += 3
+                    elif ag > hg:
+                        pts[a] += 3
+                    else:
+                        pts[h] += 1; pts[a] += 1
+
+        # classify after full group stage (all 3 mds accumulated)
+        for gname, gteams in GROUPS.items():
+            pts = group_pts[gname]
+            gf = group_gf[gname]
+            ga = group_ga[gname]
             order = sorted(gteams, key=lambda t: (pts[t], gf[t] - ga[t], gf[t]),
                            reverse=True)
             qualified[f"1{gname}"] = order[0]
@@ -145,16 +305,17 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
             advance[third_by_group[gname]] += 1
 
         # mata-mata: bracket FIXO oficial da FIFA (jogos 73-104)
+        # apply dynamics + dates for rest/momentum between rounds
         r32 = resolve_r32(qualified, third_by_group, best_third_groups)
-        w32 = [knockout(h, a) for h, a in r32]                  # 16 vencedores (R32)
-        w16 = [knockout(w32[i], w32[j]) for i, j in R16_PAIRS]  # 8 (oitavas)
-        w8 = [knockout(w16[i], w16[j]) for i, j in QF_PAIRS]    # 4 = semifinalistas
+        w32 = [knockout(h, a, KO_DATES["r32"]) for h, a in r32]
+        w16 = [knockout(w32[i], w32[j], KO_DATES["r16"]) for i, j in R16_PAIRS]
+        w8 = [knockout(w16[i], w16[j], KO_DATES["qf"]) for i, j in QF_PAIRS]
         for t in w8:
             semi[t] += 1
-        finalists = [knockout(w8[i], w8[j]) for i, j in SF_PAIRS]  # 2
+        finalists = [knockout(w8[i], w8[j], KO_DATES["sf"]) for i, j in SF_PAIRS]
         for t in finalists:
             final[t] += 1
-        champ[knockout(finalists[0], finalists[1])] += 1
+        champ[knockout(finalists[0], finalists[1], KO_DATES["final"])] += 1
 
     rows = []
     for t in teams:
