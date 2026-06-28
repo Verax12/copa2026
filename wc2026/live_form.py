@@ -487,11 +487,22 @@ class AdjustedGoalModel:
         return float(np.clip(lam, 0.05, 8)), float(np.clip(mu, 0.05, 8))
 
     def score_matrix(self, home: str, away: str, neutral: bool = True) -> np.ndarray:
-        from scipy.stats import poisson
         lam, mu = self.expected_goals(home, away, neutral=neutral)
         g = np.arange(self._MAXG + 1)
-        ph = poisson.pmf(g, lam)
-        pa = poisson.pmf(g, mu)
+        # P1 support: ensemble exposes via .dc; DC direct; fallback 1.0 (poisson)
+        base_disp = getattr(self.base, 'dispersion', None)
+        if base_disp is None:
+            base_disp = getattr(getattr(self.base, 'dc', None), 'dispersion', None)
+        disp = float(base_disp) if base_disp is not None else 1.0
+        if disp > 1.0:
+            # P1: respect dispersion from base (e.g. DC fitted NB)
+            from wc2026.goal_model import _nb_pmf
+            ph = _nb_pmf(g, lam, disp)
+            pa = _nb_pmf(g, mu, disp)
+        else:
+            from scipy.stats import poisson
+            ph = poisson.pmf(g, lam)
+            pa = poisson.pmf(g, mu)
         m = np.outer(ph, pa)
         rho = self.rho
         m[0, 0] *= 1.0 - lam * mu * rho
