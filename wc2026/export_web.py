@@ -17,8 +17,8 @@ define `window.WC_DATA` com tudo que o frontend precisa, na estrutura estável:
   }
 
 Uso:
-    python -m wc2026.export_web                 # Dixon-Coles, 20k sims
-    python -m wc2026.export_web --engine ml --live --sims 30000
+    python -m wc2026.export_web                           # ensemble (padrão), 20k sims
+    python -m wc2026.export_web --engine ml --live --sims 50000
 """
 from __future__ import annotations
 

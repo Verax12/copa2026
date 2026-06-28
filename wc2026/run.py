@@ -1,11 +1,14 @@
 """
 Pipeline completo: dados -> Elo -> (Dixon-Coles | ML com jogadores) -> Monte Carlo.
 
+Motor recomendado: "ensemble" (mistura Dixon-Coles + ML com features de jogadores).
+Dixon-Coles é mais rápido para experimentos, mas ensemble costuma dar melhores resultados.
+
 Uso:
-    python -m wc2026.run                      # motor Dixon-Coles, 10k simulacoes
-    python -m wc2026.run --engine ml          # motor de ML (boosting + jogadores)
-    python -m wc2026.run --sims 50000          # mais simulacoes = mais estavel
-    python -m wc2026.run --update              # rebaixa a base antes de rodar
+    python -m wc2026.run                           # usa ensemble (padrão recomendado)
+    python -m wc2026.run --engine dixon            # motor clássico Dixon-Coles
+    python -m wc2026.run --engine ml --sims 50000  # só ML + muitas simulações
+    python -m wc2026.run --update --live           # atualiza dados + aplica ajuste ao vivo
 """
 from __future__ import annotations
 
@@ -37,17 +40,19 @@ def _show_path(team: str) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sims", type=int, default=10000)
-    ap.add_argument("--engine", choices=["dixon", "ml", "ensemble"], default="dixon")
-    ap.add_argument("--update", action="store_true")
+    ap.add_argument("--sims", type=int, default=10000,
+                    help="número de simulações Monte Carlo (mais = mais estável, mas mais lento)")
+    ap.add_argument("--engine", choices=["dixon", "ml", "ensemble"], default="ensemble",
+                    help="motor de gols: dixon (clássico), ml (boosting + jogadores) ou ensemble (padrão recomendado)")
+    ap.add_argument("--update", action="store_true",
+                    help="atualiza a base de resultados históricos antes de rodar")
     ap.add_argument("--live", action="store_true",
-                    help="aplica o ajuste de forma ao vivo (dados granulares da "
-                         "API-Football em api_cache/); ignora se o cache estiver vazio")
+                    help="aplica ajuste de forma ao vivo usando finalizações da Copa 2026 (api_cache/). "
+                         "Requer ter rodado thesportsdb --pull antes.")
     ap.add_argument("--no-calibration", action="store_true",
-                    help="desliga a calibração pós-modelo de V/E/D")
+                    help="desliga a calibração pós-modelo de probabilidades V/E/D")
     ap.add_argument("--path", metavar="SELECAO",
-                    help="mostra o caminho fixo da seleção no mata-mata (1º e 2º do "
-                         "grupo) segundo o bracket oficial, e sai")
+                    help="mostra apenas o caminho fixo da seleção no mata-mata oficial (1º e 2º do grupo) e sai")
     args = ap.parse_args()
 
     if args.path:
@@ -102,13 +107,17 @@ def main() -> None:
         from .outcome_calibration import calibrate_model
         model = calibrate_model(model, matches, engine=args.engine, w=0.5)
 
+    live_str = " + live adjustment" if args.live else ""
+    cal_str = "" if args.no_calibration else " + calibração V/E/D"
+    print(f"     Config: engine={args.engine}{live_str}{cal_str}, sims={args.sims:,}")
     print(f"4/5  Simulando o torneio {args.sims:,}x (Monte Carlo)...")
     table = simulate(model, elo, played, n_sims=args.sims, shootout_beta=beta)
 
     print("5/5  Pronto.\n")
-    cal = "calibrado" if not args.no_calibration else "sem calibracao"
-    print(f"=== PROBABILIDADE DE CAMPEAO -- Copa 2026  "
-          f"[motor: {args.engine}, {cal}]  ({args.sims:,} simulacoes) ===\n")
+    cal = "calibrado" if not args.no_calibration else "sem calibração"
+    live = " + live-form" if args.live else ""
+    print(f"=== PROBABILIDADE DE CAMPEÃO — Copa 2026  "
+          f"[motor: {args.engine}{live}, {cal}]  ({args.sims:,} simulações) ===\n")
     top = table.head(15)
     print(f"{'#':>2}  {'Selecao':<24}{'Campeao':>9}{'Final':>8}{'Semi':>8}{'Avanca':>9}{'Elo':>8}")
     for i, (_, r) in enumerate(top.iterrows(), 1):

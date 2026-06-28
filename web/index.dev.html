@@ -44,7 +44,12 @@
       qs.forEach((v, k) => { route.calendar[k] = v; });
 
       if (!first || first === "overview" || first === "visao-geral" || first === "geral") route.tab = "overview";
-      else if (["stages","etapas","fase","fases"].includes(first)) route.tab = "stages";
+      else if (["stages","etapas","fase","fases"].includes(first)) {
+        route.tab = "stages";
+        const sub = (parts[1] || "").toLowerCase();
+        if (["bracket", "mata-mata", "mata", "knockout", "eliminatorias"].includes(sub)) route.stagesSub = "bracket";
+        else if (["groups", "grupos", "grupo", "fase-de-grupos"].includes(sub)) route.stagesSub = "groups";
+      }
       else if (["calendar","calendario"].includes(first)) {
         route.tab = "calendar";
         if (parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1])) route.calendar.date = parts[1];
@@ -172,7 +177,8 @@
       ];
 
       const engineLabel = meta.engine === "ml" ? "ML (boosting + jogadores)"
-        : meta.engine === "ensemble" ? "ensemble (Dixon-Coles + ML)" : "Dixon-Coles";
+        : meta.engine === "ensemble" ? "Ensemble (recomendado: Dixon-Coles + ML)"
+        : "Dixon-Coles (clássico)";
       const noteBody = (lang === "pt"
         ? `Probabilidades de ${(meta.sims||0).toLocaleString("pt-BR")} simulações de Monte Carlo (motor ${engineLabel}${meta.live ? " + ajuste ao vivo" : ""}), com o chaveamento oficial da FIFA. ${meta.playedMatches||0} jogos da Copa já entram com placar real.`
         : `Probabilities from ${(meta.sims||0).toLocaleString("en-US")} Monte Carlo simulations (${engineLabel} engine${meta.live ? " + live adjustment" : ""}), using the official FIFA bracket. ${meta.playedMatches||0} played matches use real scores.`);
@@ -214,7 +220,7 @@
 
           <main className="app">
             {tab === "overview" && <HeroView    lang={lang} onPick={handleTeamPick} openPair={openPair} />}
-            {tab === "stages"   && <StagesView  lang={lang} onTeamPick={handleTeamPick} openPair={openPair} />}
+            {tab === "stages"   && <StagesView  lang={lang} onTeamPick={handleTeamPick} openPair={openPair} initialSub={initialRoute.stagesSub} />}
             {tab === "calendar" && <CalendarView lang={lang} openMatch={openMatch} initFilters={calendarRoute} onRouteChange={handleCalendarRoute} />}
             {tab === "team"     && <TeamView    lang={lang} initId={jumpTeam} key={jumpTeam ?? "team"} openPair={openPair} onTeamRoute={handleTeamPick} />}
             {tab === "compare"  && <CompareView lang={lang} openPair={openPair} initPair={compareRoute} onCompareRoute={handleCompareRoute} />}

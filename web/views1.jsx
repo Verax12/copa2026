@@ -527,9 +527,12 @@ function BracketView({ lang, openPair }) {
 }
 
 /* ---------- ETAPAS WRAPPER ---------- */
-function StagesView({ lang, onTeamPick, openPair }) {
+function StagesView({ lang, onTeamPick, openPair, initialSub }) {
   const T = I18N[lang];
   const [sub, setSub] = useState(() => {
+    if (initialSub === "bracket" || initialSub === "groups") {
+      return initialSub;
+    }
     const saved = localStorage.getItem("wc26-stages-sub");
     return saved === "bracket" || saved === "groups" ? saved : "bracket";
   });

@@ -10,8 +10,9 @@ de Machine Learning com dados de jogadores e simulação de Monte Carlo. Roda 10
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-python -m wc2026.run --update                 # baixa base atualizada e roda (motor Dixon-Coles)
-python -m wc2026.run --engine ml --sims 50000 # motor de ML com features de jogador
+python -m wc2026.run --update                 # usa ensemble (padrão recomendado) + atualiza dados
+python -m wc2026.run --engine ml --sims 50000 # motor de ML puro com features de jogador
+python -m wc2026.run --engine dixon           # Dixon-Coles clássico (mais rápido)
 ```
 
 No Mac M4 Pro roda em segundos. Se o `xgboost` reclamar de OpenMP: `brew install libomp`
@@ -30,13 +31,10 @@ No Mac M4 Pro roda em segundos. Se o `xgboost` reclamar de OpenMP: `brew install
    dependência do artilheiro (top_share), taxa de pênalti, concentração (HHI).
    Capta a ESTRUTURA do ataque, não só o placar.
 
-4. **Dois motores de gols** (escolha com `--engine`):
-   - `dixon` — **Dixon-Coles**: duas Poisson acopladas, estimadas por máxima
-     verossimilhança com decaimento temporal (`goal_model.py`).
-   - `ml` — **gradient boosting Poisson** (XGBoost/sklearn) sobre features ricas:
-     Elo, forma recente, gols recentes e o perfil ofensivo de jogadores
-     (`features.py` + `ml_model.py`). Validado out-of-time.
-   - `ensemble` — blend das matrizes Dixon-Coles + ML; é o padrão do dashboard.
+4. **Motores de gols** (escolha com `--engine`, padrão = `ensemble`):
+   - `ensemble` — **recomendado**: blend 50/50 das matrizes de placar de Dixon-Coles + ML.
+   - `dixon` — **Dixon-Coles** clássico: duas Poisson acopladas + correção rho + decaimento temporal.
+   - `ml` — **gradient boosting Poisson** (XGBoost ou sklearn) com features de Elo + perfil de jogadores.
 
 5. **Calibração V/E/D** (`outcome_calibration.py`) — correção pós-modelo treinada
    em validação temporal, reescalando a matriz de placares para melhorar as
@@ -94,8 +92,9 @@ simulação — sem vazamento, pois os jogos já disputados entram com placar re
 
 ```bash
 python -m wc2026.thesportsdb --pull          # 1) baixa os dados granulares (grátis)
-python -m wc2026.run --live                  # 2) Dixon-Coles + ajuste ao vivo
-python -m wc2026.run --engine ml --live      #    idem com o motor de ML
+python -m wc2026.run --live                  # 2) ensemble (padrão) + ajuste ao vivo
+python -m wc2026.run --engine ml --live      #    motor ML + ajuste ao vivo
+python -m wc2026.run --engine dixon --live   #    Dixon-Coles + ajuste ao vivo
 python -m wc2026.live_form                    # inspeciona os multiplicadores reais
 python -m wc2026.live_form --demo            # demonstra o efeito com dados sintéticos
 .venv/bin/python tests/test_live_form.py     # testes do parser e dos multiplicadores
@@ -120,7 +119,7 @@ python -m wc2026.prediction_test  # backtest pré-Copa vs jogos reais atuais
 Painel visual (design FIFA 2026) ligado aos dados reais do modelo, em `web/`:
 
 ```bash
-scripts/generate_web_data.sh       # gera web/wc_data.js (ensemble, 200k sims)
+scripts/generate_web_data.sh       # gera web/wc_data.js (ensemble por padrão, 200k sims)
 python -m http.server 8765 --directory web   # abra http://127.0.0.1:8765
 # ou: ./web/serve.sh
 ```

@@ -8,9 +8,9 @@ gerado pelo modelo.
 
 ```bash
 # 1) gerar os dados reais a partir do modelo (cria web/wc_data.js)
-python -m wc2026.export_web                      # Dixon-Coles, 20k sims
-python -m wc2026.export_web --engine ml --live   # opções: motor de ML + ajuste ao vivo
-scripts/generate_web_data.sh                     # padrão do projeto: ensemble, 200k sims
+python -m wc2026.export_web                           # ensemble (padrão recomendado), 20k sims
+python -m wc2026.export_web --engine ml --live        # motor ML + ajuste ao vivo
+scripts/generate_web_data.sh                          # padrão do projeto: ensemble + 200k sims (recomendado)
 
 # 2) servir (precisa de HTTP — o Babel carrega os .jsx via fetch)
 python -m http.server 8765 --directory web
