@@ -391,66 +391,82 @@ const ROUND_NAMES = {
   pt: { R32: "32-avos", R16: "Oitavas", QF: "Quartas", SF: "Semifinais", F: "Final" },
   en: { R32: "Round of 32", R16: "Round of 16", QF: "Quarter-finals", SF: "Semi-finals", F: "Final" }
 };
-const ROUND_ORDER = ["R32", "R16", "QF", "SF", "F"];
+const PREV_ROUND = { F: "SF", SF: "QF", QF: "R16", R16: "R32" };
 
-/* uma partida do bracket */
-function BracketMatch({ match, lang, overrides, onToggle, openPair }) {
-  const { a, b, score, winner } = match;
-  const isEdited = overrides[match.id] != null;
-
-  function row(id, side) {
-    const isWin = id === winner;
-    const sc = side === "a" ? score[0] : score[1];
-    return (
-      <div className={"bm-team" + (isWin ? " win" : " lose") + (isEdited && overrides[match.id] === id ? " edited" : "")}
-           {...clickable(() => onToggle(match.id, id, side === "a" ? b : a, match), WC.name(id, lang))}
-           title={lang === "pt" ? "Clique para fazer esta seleção vencer" : "Click to make this team win"}>
-        <Flag id={id} w={26} />
-        <span className="nm">{WC.name(id, lang)}</span>
-        <span className="sc">{sc}</span>
-      </div>
-    );
-  }
-
+/* tile de uma seleção (só a bandeira, estilo pôster FIFA), clicável p/ "e se?".
+   vencedor destacado, perdedor esmaecido; o nome aparece no tooltip. */
+function TeamTile({ id, win, onClick, label, lang }) {
   return (
-    <div className={"bm" + (isEdited ? " edited" : "")}>
-      {row(a, "a")}
-      <div className="bm-div" />
-      {row(b, "b")}
-    </div>
+    <span className={"fbr-flag" + (win ? " win" : " lose")}
+          {...clickable(onClick, label)}
+          title={(lang === "pt" ? "Fazer " : "Make ") + label + (lang === "pt" ? " vencer" : " win")}>
+      <Flag id={id} w={40} />
+    </span>
   );
 }
 
 function BracketView({ lang, openPair }) {
   const T = I18N[lang];
+  const pt = lang === "pt";
   const [overrides, setOverrides] = useState({});
   const bracket = useMemo(() => D.buildBracket(overrides), [overrides]);
+  const spec = D.bracketSpec;
   const hasEdits = Object.keys(overrides).length > 0;
-  const pt = lang === "pt";
 
-  function handleToggle(matchId, clickedId, otherId, match) {
-    const current = overrides[matchId] != null ? overrides[matchId] : match.def;
+  // clicar numa seleção a faz vencer aquele confronto (cascateia p/ frente);
+  // clicar de novo no vencedor atual desfaz a edição.
+  function toggle(match, clickedId) {
+    const current = overrides[match.id] != null ? overrides[match.id] : match.def;
     if (current === clickedId) {
-      const next = { ...overrides }; delete next[matchId]; setOverrides(next);
+      setOverrides(o => { const n = { ...o }; delete n[match.id]; return n; });
     } else {
-      setOverrides(o => ({ ...o, [matchId]: clickedId }));
+      setOverrides(o => ({ ...o, [match.id]: clickedId }));
     }
   }
 
+  function childIdx(round, idx) {
+    if (round === "F") return [0, 1];
+    if (round === "SF") return spec.sfPairs[idx];
+    if (round === "QF") return spec.qfPairs[idx];
+    if (round === "R16") return spec.r16Pairs[idx];
+    return null;
+  }
+
+  // um confronto = duas bandeiras empilhadas (vencedor destacado)
+  function tie(m) {
+    return (
+      <span className={"fbr-tie" + (overrides[m.id] != null ? " edited" : "")}
+            title={WC.name(m.a, lang) + " " + m.score[0] + "–" + m.score[1] + " " + WC.name(m.b, lang)}>
+        <TeamTile id={m.a} win={m.winner === m.a} onClick={() => toggle(m, m.a)} label={WC.name(m.a, lang)} lang={lang} />
+        <TeamTile id={m.b} win={m.winner === m.b} onClick={() => toggle(m, m.b)} label={WC.name(m.b, lang)} lang={lang} />
+      </span>
+    );
+  }
+
+  // nó recursivo: filhos de um lado, "pai" (confronto desta rodada) do outro.
+  // o espelhamento da metade direita é feito no CSS (.fbr-half.right).
+  function node(round, idx) {
+    const m = bracket.rounds[round][idx];
+    if (round === "R32") return <div className="fbr-leaf">{tie(m)}</div>;
+    const prev = PREV_ROUND[round];
+    const [c0, c1] = childIdx(round, idx);
+    return (
+      <div className={"fbr-node r-" + round.toLowerCase()}>
+        <div className="fbr-kids">{node(prev, c0)}{node(prev, c1)}</div>
+        <div className="fbr-link" />
+        <div className="fbr-slot">{tie(m)}</div>
+      </div>
+    );
+  }
+
   const champId = bracket.champion;
-  const finalMatch = bracket.rounds["F"][0];
-  const runnerUp = finalMatch.winner === finalMatch.a ? finalMatch.b : finalMatch.a;
+  const F = bracket.rounds.F[0];
+  const sf0 = bracket.rounds.SF[0], sf1 = bracket.rounds.SF[1];
+  const bronzeA = sf0.winner === sf0.a ? sf0.b : sf0.a;     // perdedores das semis
+  const bronzeB = sf1.winner === sf1.a ? sf1.b : sf1.a;
 
   return (
     <div className="fade-in">
-      <div className="section-head">
-        <div>
-          <div className="eyebrow">{T.stagesTitle}</div>
-          <h2>{T.knockout}</h2>
-          <p>{T.bracketSub}</p>
-        </div>
-      </div>
-
       <div className="sim-bar card">
         <span className="ic">⚡</span>
         <div className="tx"><b>{T.simTitle}: </b>{T.simBody}</div>
@@ -464,42 +480,47 @@ function BracketView({ lang, openPair }) {
         </div>
       )}
 
-      {/* campeão previsto em destaque no topo */}
-      <div className="ko-champion card">
-        <div className="koc-final">
-          <div className="koc-side">
-            <span className="koc-lbl">{pt ? "Finalista" : "Finalist"}</span>
-            <Flag id={finalMatch.a} w={34} /><span className="koc-nm">{WC.name(finalMatch.a, lang)}</span>
-          </div>
-          <span className="koc-score">{finalMatch.score[0]} – {finalMatch.score[1]}</span>
-          <div className="koc-side r">
-            <span className="koc-lbl">{pt ? "Finalista" : "Finalist"}</span>
-            <Flag id={finalMatch.b} w={34} /><span className="koc-nm">{WC.name(finalMatch.b, lang)}</span>
-          </div>
-        </div>
-        <div className="koc-winner">
-          <span className="tp">🏆</span>
-          <Flag id={champId} w={54} />
-          <div className="koc-wmeta">
-            <span className="l">{T.champion}</span>
-            <span className="n">{WC.name(champId, lang)}</span>
-          </div>
-          <span className="koc-pct">{D.titleProb[champId].toFixed(1)}%</span>
-        </div>
-      </div>
+      <div className="fbr-scroll">
+        <div className="fbr">
+          <div className="fbr-title">FIFA WORLD CUP 2026<sup>™</sup></div>
 
-      <div className="bracket-scroll">
-        <div className="bracket2">
-          {ROUND_ORDER.map(rk => (
-            <div key={rk} className={"bcol2 col-" + rk.toLowerCase()}>
-              <div className="bcol2-hd">{ROUND_NAMES[lang][rk]}<span>{bracket.rounds[rk].length} {pt ? "jogos" : "ties"}</span></div>
-              <div className="bcol2-body">
-                {bracket.rounds[rk].map(m => (
-                  <BracketMatch key={m.id} match={m} lang={lang} overrides={overrides} onToggle={handleToggle} openPair={openPair} />
-                ))}
+          <div className="fbr-grid">
+            <div className="fbr-half left">{node("SF", 0)}</div>
+
+            <div className="fbr-center">
+              <div className="fbr-champ">
+                <div className="fbr-champ-lbl">{pt ? "Campeã do Mundo" : "World Champion"}</div>
+                <span className="fbr-champ-flag"><Flag id={champId} w={80} /></span>
+                <div className="fbr-champ-nm">{WC.name(champId, lang)}</div>
+                <div className="fbr-champ-pct"><span className="tp">🏆</span> {D.titleProb[champId].toFixed(1)}%</div>
+              </div>
+
+              <div className="fbr-final">
+                <button className={"fbr-fin" + (F.winner === F.a ? " win" : "")}
+                        {...clickable(() => toggle(F, F.a), WC.name(F.a, lang))}
+                        title={(pt ? "Fazer " : "Make ") + WC.name(F.a, lang) + (pt ? " campeã" : " champion")}>
+                  <Flag id={F.a} w={24} /><span>{WC.name(F.a, lang)}</span>
+                </button>
+                <span className="fbr-fin-sc">{F.score[0]}–{F.score[1]}</span>
+                <button className={"fbr-fin" + (F.winner === F.b ? " win" : "")}
+                        {...clickable(() => toggle(F, F.b), WC.name(F.b, lang))}
+                        title={(pt ? "Fazer " : "Make ") + WC.name(F.b, lang) + (pt ? " campeã" : " champion")}>
+                  <Flag id={F.b} w={24} /><span>{WC.name(F.b, lang)}</span>
+                </button>
+              </div>
+
+              <div className="fbr-bronze">
+                <div className="fbr-bronze-lbl">{pt ? "Disputa de 3º lugar" : "Bronze final"}</div>
+                <div className="fbr-bronze-row">
+                  <span className="fbr-bz"><Flag id={bronzeA} w={20} /><span>{WC.name(bronzeA, lang)}</span></span>
+                  <span className="fbr-bz-x">×</span>
+                  <span className="fbr-bz"><Flag id={bronzeB} w={20} /><span>{WC.name(bronzeB, lang)}</span></span>
+                </div>
               </div>
             </div>
-          ))}
+
+            <div className="fbr-half right">{node("SF", 1)}</div>
+          </div>
         </div>
       </div>
     </div>

@@ -229,7 +229,7 @@
     qualifierIds: WD.qualifierIds, seeds: WD.seeds,
     titleProb: WD.titleProb,
     finalProb: WD.finalProb, semiProb: WD.semiProb, advProb: WD.advProb,
-    baseBracket, buildBracket, computeFinish, groupMatchesFor, getMatchStats, predScore, byId,
+    baseBracket, buildBracket, bracketSpec: WD.bracketSpec, computeFinish, groupMatchesFor, getMatchStats, predScore, byId,
     slug, teamSlug, teamFromKey, matchSlug, matchFromKey, calendarEntry,
     ROUND_KEYS, ROUND_LABEL, ROUND_SHORT,
     GROUP_LABELS: WD.groupLabels,
