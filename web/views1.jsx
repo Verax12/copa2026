@@ -351,7 +351,7 @@ function GroupCard({ group, lang, onPick }) {
       {group.table.map((row, i) => (
         <div key={row.id} className={"grow " + Q_CLASS[i]} {...clickable(() => onPick(row.id), WC.name(row.id, lang))}>
           <span className="pos">{i + 1}</span>
-          <Flag id={row.id} w={32} />
+          <Flag id={row.id} w={36} />
           <span className="nm">{WC.name(row.id, lang)}</span>
           <span className="qbadge">{Q_LABEL[i]}</span>
           <span className="adv">{row.adv}<span>%</span></span>
@@ -365,11 +365,10 @@ function GroupsView({ lang, onTeamPick }) {
   const T = I18N[lang];
   return (
     <div className="fade-in">
-      <div className="section-head">
+      <div className="stages-subhead">
         <div>
-          <div className="eyebrow">{T.stagesTitle}</div>
-          <h2>{T.groups}</h2>
-          <p>{T.groupsSub}</p>
+          <div className="eyebrow">{T.groups}</div>
+          <p className="stages-desc">{T.groupsSub}</p>
         </div>
         <div className="legend-bar">
           <span><i style={{ background: "var(--red)" }}></i>{T.first}/{T.second}</span>
@@ -400,7 +399,7 @@ function TeamTile({ id, win, onClick, label, lang }) {
     <span className={"fbr-flag" + (win ? " win" : " lose")}
           {...clickable(onClick, label)}
           title={(lang === "pt" ? "Fazer " : "Make ") + label + (lang === "pt" ? " vencer" : " win")}>
-      <Flag id={id} w={40} />
+      <Flag id={id} w={56} />
     </span>
   );
 }
@@ -490,7 +489,7 @@ function BracketView({ lang, openPair }) {
             <div className="fbr-center">
               <div className="fbr-champ">
                 <div className="fbr-champ-lbl">{pt ? "Campeã do Mundo" : "World Champion"}</div>
-                <span className="fbr-champ-flag"><Flag id={champId} w={80} /></span>
+                <span className="fbr-champ-flag"><Flag id={champId} w={90} /></span>
                 <div className="fbr-champ-nm">{WC.name(champId, lang)}</div>
                 <div className="fbr-champ-pct"><span className="tp">🏆</span> {D.titleProb[champId].toFixed(1)}%</div>
               </div>
@@ -499,22 +498,22 @@ function BracketView({ lang, openPair }) {
                 <button className={"fbr-fin" + (F.winner === F.a ? " win" : "")}
                         {...clickable(() => toggle(F, F.a), WC.name(F.a, lang))}
                         title={(pt ? "Fazer " : "Make ") + WC.name(F.a, lang) + (pt ? " campeã" : " champion")}>
-                  <Flag id={F.a} w={24} /><span>{WC.name(F.a, lang)}</span>
+                  <Flag id={F.a} w={28} /><span>{WC.name(F.a, lang)}</span>
                 </button>
                 <span className="fbr-fin-sc">{F.score[0]}–{F.score[1]}</span>
                 <button className={"fbr-fin" + (F.winner === F.b ? " win" : "")}
                         {...clickable(() => toggle(F, F.b), WC.name(F.b, lang))}
                         title={(pt ? "Fazer " : "Make ") + WC.name(F.b, lang) + (pt ? " campeã" : " champion")}>
-                  <Flag id={F.b} w={24} /><span>{WC.name(F.b, lang)}</span>
+                  <Flag id={F.b} w={28} /><span>{WC.name(F.b, lang)}</span>
                 </button>
               </div>
 
               <div className="fbr-bronze">
                 <div className="fbr-bronze-lbl">{pt ? "Disputa de 3º lugar" : "Bronze final"}</div>
                 <div className="fbr-bronze-row">
-                  <span className="fbr-bz"><Flag id={bronzeA} w={20} /><span>{WC.name(bronzeA, lang)}</span></span>
+                  <span className="fbr-bz"><Flag id={bronzeA} w={24} /><span>{WC.name(bronzeA, lang)}</span></span>
                   <span className="fbr-bz-x">×</span>
-                  <span className="fbr-bz"><Flag id={bronzeB} w={20} /><span>{WC.name(bronzeB, lang)}</span></span>
+                  <span className="fbr-bz"><Flag id={bronzeB} w={24} /><span>{WC.name(bronzeB, lang)}</span></span>
                 </div>
               </div>
             </div>
@@ -530,14 +529,23 @@ function BracketView({ lang, openPair }) {
 /* ---------- ETAPAS WRAPPER ---------- */
 function StagesView({ lang, onTeamPick, openPair }) {
   const T = I18N[lang];
-  const [sub, setSub] = useState("groups");
+  const [sub, setSub] = useState(() => {
+    const saved = localStorage.getItem("wc26-stages-sub");
+    return saved === "bracket" || saved === "groups" ? saved : "bracket";
+  });
+
+  function setSubAndSave(next) {
+    setSub(next);
+    localStorage.setItem("wc26-stages-sub", next);
+  }
+
   return (
     <div className="fade-in">
       <div className="sub-tabs">
-        <button className={"btn" + (sub === "groups" ? " primary" : "")} onClick={() => setSub("groups")}>
+        <button className={"btn" + (sub === "groups" ? " primary" : "")} onClick={() => setSubAndSave("groups")}>
           ⚽ {T.groups}
         </button>
-        <button className={"btn" + (sub === "bracket" ? " primary" : "")} onClick={() => setSub("bracket")}>
+        <button className={"btn" + (sub === "bracket" ? " primary" : "")} onClick={() => setSubAndSave("bracket")}>
           🗂 {T.knockout}
         </button>
       </div>
