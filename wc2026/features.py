@@ -60,6 +60,9 @@ def build_features(matches: pd.DataFrame, since: str = "2015-01-01") -> pd.DataF
                 "form_home": mean(pts_hist[h]), "form_away": mean(pts_hist[a]),
                 "gf_home": mean(gf_hist[h], 1.0), "ga_home": mean(ga_hist[h], 1.0),
                 "gf_away": mean(gf_hist[a], 1.0), "ga_away": mean(ga_hist[a], 1.0),
+                "gd_home": mean(gf_hist[h], 1.0) - mean(ga_hist[h], 1.0),
+                "gd_away": mean(gf_hist[a], 1.0) - mean(ga_hist[a], 1.0),
+                "form_diff": mean(pts_hist[h]) - mean(pts_hist[a]),
                 "tourn_w": TOURN_WEIGHT.get(r.tournament, 0.4),
                 "off_goals_home": prof(h, yr, "goals"), "off_nscor_home": prof(h, yr, "n_scorers"),
                 "off_topshare_home": prof(h, yr, "top_share"), "off_penrate_home": prof(h, yr, "pen_rate"),
@@ -87,7 +90,9 @@ def build_features(matches: pd.DataFrame, since: str = "2015-01-01") -> pd.DataF
 
 FEATURE_COLS = [
     "neutral", "elo_home", "elo_away", "elo_diff", "form_home", "form_away",
-    "gf_home", "ga_home", "gf_away", "ga_away", "tourn_w",
+    "gf_home", "ga_home", "gf_away", "ga_away",
+    "gd_home", "gd_away", "form_diff",
+    "tourn_w",
     "off_goals_home", "off_nscor_home", "off_topshare_home", "off_penrate_home",
     "off_goals_away", "off_nscor_away", "off_topshare_away", "off_penrate_away",
 ]
@@ -121,6 +126,7 @@ def current_state(matches: pd.DataFrame) -> dict:
         "form": {t: (float(np.mean(d)) if d else 1.0) for t, d in pts_hist.items()},
         "gf": {t: (float(np.mean(d)) if d else 1.0) for t, d in gf_hist.items()},
         "ga": {t: (float(np.mean(d)) if d else 1.0) for t, d in ga_hist.items()},
+        "gd": {t: (float(np.mean(gf_hist[t])) - np.mean(ga_hist[t]) if gf_hist[t] else 0.0) for t in gf_hist},
         "profiles": yearly_profiles(load_goalscorers()),
     }
 
@@ -146,6 +152,9 @@ def match_row(state: dict, home: str, away: str, neutral: bool = True,
         "form_home": state["form"].get(home, 1.0), "form_away": state["form"].get(away, 1.0),
         "gf_home": state["gf"].get(home, 1.0), "ga_home": state["ga"].get(home, 1.0),
         "gf_away": state["gf"].get(away, 1.0), "ga_away": state["ga"].get(away, 1.0),
+        "gd_home": state["gf"].get(home, 1.0) - state["ga"].get(home, 1.0),
+        "gd_away": state["gf"].get(away, 1.0) - state["ga"].get(away, 1.0),
+        "form_diff": state["form"].get(home, 1.0) - state["form"].get(away, 1.0),
         "tourn_w": 1.0,
         "off_goals_home": prof(home, "goals"), "off_nscor_home": prof(home, "n_scorers"),
         "off_topshare_home": prof(home, "top_share"), "off_penrate_home": prof(home, "pen_rate"),
