@@ -58,8 +58,13 @@ class DixonColes:
     def score_matrix(self, home: str, away: str, neutral: bool = True) -> np.ndarray:
         lam, mu = self.expected_goals(home, away, neutral)
         gh = np.arange(MAX_GOALS + 1)
-        ph = _pois_pmf(gh, lam)
-        pa = _pois_pmf(gh, mu)
+        disp = getattr(self, 'dispersion', 1.0)
+        if disp <= 1.0:
+            ph = _pois_pmf(gh, lam)
+            pa = _pois_pmf(gh, mu)
+        else:
+            ph = _nb_pmf(gh, lam, disp)
+            pa = _nb_pmf(gh, mu, disp)
         m = np.outer(ph, pa)
         # correção Dixon-Coles nos quatro placares baixos
         m[0, 0] *= 1.0 - lam * mu * self.rho
@@ -101,6 +106,17 @@ class DixonColes:
 
 def _pois_pmf(k: np.ndarray, lam: float) -> np.ndarray:
     return np.exp(k * np.log(lam) - lam - gammaln(k + 1.0))
+
+def _nb_pmf(k: np.ndarray, mean: float, disp: float) -> np.ndarray:
+    """Negative binomial PMF approximation for overdispersed counts.
+    var = mean * disp
+    """
+    if mean <= 0:
+        return np.zeros_like(k, dtype=float)
+    n = mean / (disp - 1.0)
+    p = 1.0 / disp
+    # nbinom.pmf(k, n, p) where mean = n*(1-p)/p
+    return nbinom.pmf(k, n, p)
 
 
 def fit_dixon_coles(matches: pd.DataFrame, half_life_days: float = 730.0,
