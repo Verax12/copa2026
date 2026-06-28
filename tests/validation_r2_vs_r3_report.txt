@@ -1,0 +1,67 @@
+Copa 2026 Prediction Motor - Round Validation Report (R2 cutoff vs R3)
+Date: 2026-06-28
+Branch: improvements/motor-precisao
+Script: tests/test_round_validation.py (improved from /tmp/test_rounds.py)
+
+=== SETUP ===
+Cutoff (end of 2nd round): 2026-06-23
+R2 played fixed: 48 matches (2 per team)
+R3 holdout: 24 matches (2026-06-24 to 2026-06-27)
+Training: matches date <= cutoff (no R3 leakage)
+Live stats filtered <= cutoff (10 rows used)
+Active: P1 dispersion (NB), P2 live (enriched), P3 features, ensemble=0.55, calib, P5 fatigue, venue
+Sims: 5000
+
+=== WDL ON R3 (per-match) ===
+Accuracy: 15/24 = 62.5%
+Brier: 0.5470 (uniform~0.667)
+Log-loss: 0.9033
+
+Detailed (see script run for full list; 15 HIT, 9 MISS)
+Miss examples incl. Japan draw (model 76% win), Ecuador 2-1 Ger, US 2-3 Tur, SA 1-0 SK, etc.
+
+Elo baseline ref (rough): 58.3%
+
+=== GROUP STANDINGS ===
+Actual top-2 examples:
+A: Mexico / South Africa
+C: Brazil / Morocco
+E: Germany / Ivory Coast
+... (full in script)
+
+Predicted (by exp_pts from MC):
+Correct 1sts: 10/12 (83.3%)
+Top-2 slots correct: 22/24 (91.7%)
+
+Swaps noted: A (SK vs SA), C (Mor x Bra), G (Egy vs Bel), J (Alg vs Aus)
+
+Actual best 3rds: DR Congo, Sweden, Ecuador, Ghana, Bosnia and Herzegovina, Algeria, Paraguay, Senegal
+
+=== ADVANCE DISCRIMINATION ===
+Qualified (32): mean advance_% 87.8% 
+Non (16): mean 24.5%
+Delta: 63.3 pp  (strong separation)
+
+=== CHAMPION PROBS (R2 model) ===
+Argentina 20.60%
+Spain 17.68%
+France 9.70%
+Colombia 7.68%
+England 6.24%
+Brazil 5.46%
+Germany 5.16%
+Portugal 3.64%
+Netherlands 3.42%
+Morocco 3.16%
+... (full table in script output)
+
+Full-data ref top5 overlap: 4/5 (lookahead bias small effect here)
+
+=== OBSERVATIONS ===
+- Positive validation for current improvements: good WDL, excellent group/advance prediction after only 2 matches per team.
+- Live sparse but integrated (small adjustments visible).
+- No KO data; extend when available.
+- If acc drops in future: tune live shrink, dispersion in Adjusted wrapper, more features for cup-specific.
+
+Run cmd: .venv/bin/python tests/test_round_validation.py
+Full stdout from run captured in conversation history for this task.

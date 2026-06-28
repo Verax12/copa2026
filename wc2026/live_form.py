@@ -501,6 +501,12 @@ class AdjustedGoalModel:
         m = np.clip(m, 1e-12, None)
         return m / m.sum()
 
+    def outcome_probs(self, home: str, away: str, neutral: bool = True) -> tuple[float, float, float]:
+        """Compute WDL from the live-adjusted (and rho-corrected) score matrix.
+        Required for composition with CalibratedGoalModel and for direct use."""
+        m = self.score_matrix(home, away, neutral=neutral)
+        return float(np.tril(m, -1).sum()), float(np.trace(m)), float(np.triu(m, 1).sum())
+
     # --- novos helpers para inspeção dos multipliers (roadmap pt.2) ---
     def multipliers(self) -> dict[str, dict[str, float]]:
         """Retorna dicts de attack/defense multipliers (pronto para inspeção)."""

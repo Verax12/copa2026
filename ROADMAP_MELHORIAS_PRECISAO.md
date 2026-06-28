@@ -104,3 +104,54 @@ Agents:
 Monitor with get_command_or_subagent_output.
 
 Next: Integrate results, test, proceed.
+
+## Validation Run: Up to 2nd Round (2026-06-23) vs 3rd Round (2026-06-24..27) - 2026-06-28
+
+**Setup (using /tmp/test_rounds.py improved):**
+- Proper cutoff: 2026-06-23 (end MD2: 48 matches, exactly 2 games per team in all 12 groups).
+- 24 third-round matches used for holdout.
+- Honest model: base (ensemble) + Elo fitted ONLY on matches date <= cutoff (49k hist + WC R1+R2); live stats filtered to <=cutoff; no R3 leakage.
+- Current improvements active: P1 (disp ~1.58, NB in DC+sample), P2 (live with territory W=0.18, adaptive shrink, configurable), P3 (richer feat: h2h, rest, form_diff etc), ensemble w=0.55, outcome calib alpha=0.5, P5 (fatigue in sim), venue host adv, calibrate shootouts.
+- n_sims=5000 (stable); seed=42.
+- Metrics: WDL argmax acc, Brier, log-loss on per-match R3; group 1st/top2 accuracy vs actual computed standings; advance_% discrimination (32 qualified vs 16); champion probs reported (no KO data yet to validate).
+
+**Key Results (detailed numbers from run):**
+- Third round (24 matches) WDL validation:
+  - Accuracy: 15/24 = 62.5%
+  - Brier: 0.5470 (vs uniform ~0.667; better calibration)
+  - Log-loss: 0.9033
+  - Rough Elo baseline (same R3): ~58.3% (model beats simple Elo)
+- Specific HIT/MISS examples (venue-aware probs):
+  - HITs: Morocco 4-2 Haiti (84%V), Canada 1-2 Switz, Bosnia 3-1 Qatar, Mexico 3-0 Czech, Scotland 0-3 Brazil (68%D), ... Senegal 5-0 Iraq, Belgium 5-1 NZ, ... Argentina 3-1 Jordan (88%D), Colombia 0-0 Port, England 2-0 Pan, Croatia 2-1 Ghana. 
+  - MISSes: South Africa 1-0 SK (model fav D 68%), Tunisia 1-3 Ned (model strong D), Japan 1-1 Swe (model 76%V !!), Ecuador 2-1 Ger, US 2-3 Tur, Paraguay 0-0 Aus, CV 0-0 SA, DR Congo 3-1 Uzb, Algeria 3-3 Aus (51%V model).
+- Group standings (actual computed from full played 72):
+  - Top-2 actual: e.g. A: Mexico/S.Africa; C: Brazil/Morocco (tied pts); E: Ger/IvC; etc. Best 3rds: DR Congo, Sweden, Ecuador, Ghana, Bosnia, Algeria, Paraguay, Senegal.
+- Predicted (exp_pts + full MC positions from R2 data):
+  - Correct 1st: 10/12 (83.3%)
+  - Top-2 slot accuracy: 22/24 (91.7%)
+  - Notable swaps: Grp A (pred SK 2nd vs act SA); C (Morocco 1st pred vs Brazil); G (Egypt 1st vs Belgium); J (Algeria 2nd vs Austria).
+  - But overall very strong group structure captured after only 2 matches.
+- Advance prob discrimination (excellent):
+  - Actual 32 qualifiers: mean advance_% = 87.8% (5.8-100%)
+  - 16 non: mean = 24.5% (0-99.4%); delta 63pp -- model separates well even mid-tournament.
+- Champion probs (R2 model): Argentina 20.6%, Spain 17.7%, France 9.7%, Colombia 7.7%, England 6.2%, Brazil 5.5%, Germany 5.2% ...
+  - Full-data ref (biased): similar top (Arg 21.7%, Sp 17.8%, ... Eng rises to 9.3%); top5 overlap 4/5.
+- Live impact: only 10 stats rows (MD1 early games); multipliers e.g. US +1.115, Paraguay 0.892, Brazil 1.054, others ~0.96-1.0. Sparse but active.
+- No later than R3 results (group stage complete 06-27; no KO in data).
+
+**Interpretation & Suggestions:**
+- Positive: 62.5% WDL on unseen R3 is solid for football (many draws  ~33% in data); Brier/Logloss good; group predictions (esp advance separation + 1st/ top2) strong validation of motor after 2 rounds. Dispersion + live + ensemble + calib + fatigue contribute to realistic variance and updates.
+- Group structure holds despite some 2nd place upsets in R3 (common in WC).
+- Weak spots observed: a few big misses on favorites (e.g. Japan draw, Ecuador upset Germany) -- typical variance or live not yet covering all (only 10 stats).
+- If negative in future runs (acc <~45-50% or poor Brier): 
+  - Boost live: call configure_live_form(shrink_tau=1.2, w_territory=0.25); or weight live higher mid-tourney.
+  - Ensemble w: try 0.6-0.65 in limited data regimes.
+  - Improve dispersion propagation into Adjusted (currently forces Poisson in live wrapper; fix by using base sample or NB pmf when disp>1).
+  - Add more R3-specific: explicit rest days between MD2-MD3, or use played form in limited matches for ML state.
+  - Expand calibration to use recent intra-cup for alpha.
+- Overall: current branch improvements validated positively on this temporal split. Recommend proceeding; re-run this test after each P update + when new results/KO added.
+- Script: /tmp/test_rounds.py (improved for full metrics, no-leak, live filter, Brier/LL, standings, discrimination, ref run). Can be moved to tests/ and added to CI. Results reproducible with .venv/bin/python /tmp/test_rounds.py .
+
+**Data note:** 72/72 group stage matches present (2026-06-11 to 06-27). Validation limited to groups; extend script when KO results arrive for full champion/ bracket validation (use bracket.py resolve etc).
+
+**Date of this validation entry:** 2026-06-28
