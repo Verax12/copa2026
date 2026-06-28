@@ -76,6 +76,9 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
         if (a, h) in real:                # confronto real com mando invertido
             ag, hg = real[(a, h)]
             return hg, ag
+        if hasattr(model, 'sample_score'):
+            # use model's sample which may include dispersion
+            return model.sample_score(h, a, rng, neutral=True)
         return _sample(cache, (h, a), rng)
 
     def knockout(h: str, a: str) -> str:

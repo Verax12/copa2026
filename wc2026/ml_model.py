@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from scipy.stats import poisson
+from scipy.stats import poisson, nbinom
 
 from .features import FEATURE_COLS
 
@@ -63,10 +63,12 @@ def _result_probs_from_goals(lam: float, mu: float, rho: float, maxg: int = 10) 
     return float(np.tril(m, -1).sum()), float(np.trace(m)), float(np.triu(m, 1).sum())
 
 
-def train(feats: pd.DataFrame, rho: float = -0.05) -> GoalML:
+def train(feats: pd.DataFrame, rho: float = -0.05, dispersion: float = 1.25) -> GoalML:
     rh = _make_regressor(); rh.fit(feats[FEATURE_COLS], feats["y_home_goals"])
     ra = _make_regressor(); ra.fit(feats[FEATURE_COLS], feats["y_away_goals"])
-    return GoalML(rh, ra, rho)
+    gm = GoalML(rh, ra, rho)
+    gm.dispersion = float(dispersion)  # attach for sampling
+    return gm
 
 
 def _logloss(probs: np.ndarray, y: np.ndarray) -> float:
@@ -117,6 +119,7 @@ class MLGoalModel:
     def __init__(self, goal_ml: GoalML, state: dict, teams: list[str]):
         self.gm = goal_ml
         self.rho = goal_ml.rho
+        self.dispersion = getattr(goal_ml, 'dispersion', 1.25)
         # monta todas as linhas de features (pares ordenados) de uma vez
         from .features import match_row
         rows, keys = [], []
@@ -136,8 +139,20 @@ class MLGoalModel:
 
     def score_matrix(self, home: str, away: str, neutral: bool = True) -> np.ndarray:
         lam, mu = self.expected_goals(home, away)
+        disp = getattr(self, 'dispersion', 1.0)
         g = np.arange(11)
-        ph = poisson.pmf(g, lam); pa = poisson.pmf(g, mu)
+        if disp <= 1.0:
+            ph = poisson.pmf(g, lam)
+            pa = poisson.pmf(g, mu)
+        else:
+            # approx NB pmf for overdisp
+            def _nb_pmf(k, mean, disp):
+                if mean <= 0: return np.zeros_like(k, dtype=float)
+                n = mean / (disp - 1)
+                p = 1.0 / disp
+                return nbinom.pmf(k, n, p)
+            ph = _nb_pmf(g, lam, disp)
+            pa = _nb_pmf(g, mu, disp)
         m = np.outer(ph, pa)
         m[0, 0] *= 1 - lam * mu * self.rho
         m[0, 1] *= 1 + lam * self.rho
@@ -145,6 +160,24 @@ class MLGoalModel:
         m[1, 1] *= 1 - self.rho
         m = np.clip(m, 1e-12, None)
         return m / m.sum()
+
+    def sample_score(self, home: str, away: str, rng: np.random.Generator,
+                     neutral: bool = True) -> tuple[int, int]:
+        lam, mu = self.expected_goals(home, away, neutral)
+        disp = getattr(self, 'dispersion', 1.0)
+        if disp <= 1.0:
+            g_home = rng.poisson(lam)
+            g_away = rng.poisson(mu)
+        else:
+            def _nb_sample(mean, disp, rng):
+                if mean <= 0:
+                    return 0
+                n = mean / (disp - 1)
+                p = 1.0 / disp
+                return int(rng.negative_binomial(n, p))
+            g_home = _nb_sample(lam, disp, rng)
+            g_away = _nb_sample(mu, disp, rng)
+        return int(g_home), int(g_away)
 
 
 if __name__ == "__main__":

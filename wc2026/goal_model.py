@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import gammaln
+from scipy.stats import nbinom, poisson
 
 MAX_GOALS = 10  # teto de gols por time ao montar a matriz de placares
 
@@ -37,6 +38,7 @@ class DixonColes:
     _idx: dict[str, int]
     avg_attack: float
     avg_defence: float
+    dispersion: float = 1.0  # 1.0 = Poisson; >1 = NegativeBinomial overdispersion
 
     # ---- parâmetros de um time (com fallback p/ seleção fraca/ausente) ----
     def _a(self, team: str) -> float:
@@ -76,10 +78,25 @@ class DixonColes:
 
     def sample_score(self, home: str, away: str, rng: np.random.Generator,
                      neutral: bool = True) -> tuple[int, int]:
-        m = self.score_matrix(home, away, neutral)
-        flat = m.ravel()
-        k = rng.choice(flat.size, p=flat)
-        return int(k // m.shape[1]), int(k % m.shape[1])
+        lam, mu = self.expected_goals(home, away, neutral)
+        disp = getattr(self, 'dispersion', 1.0)
+        if disp <= 1.0:
+            # Poisson
+            g_home = rng.poisson(lam)
+            g_away = rng.poisson(mu)
+        else:
+            # Negative Binomial approximation for overdispersion
+            # var = mean * disp; use nbinom with appropriate params
+            def _nb_sample(mean, disp, rng):
+                if mean <= 0:
+                    return 0
+                # Common parametrization: n = mean / (disp-1), p = 1/disp
+                n = mean / (disp - 1)
+                p = 1.0 / disp
+                return int(rng.negative_binomial(n, p))
+            g_home = _nb_sample(lam, disp, rng)
+            g_away = _nb_sample(mu, disp, rng)
+        return int(g_home), int(g_away)
 
 
 def _pois_pmf(k: np.ndarray, lam: float) -> np.ndarray:
@@ -151,18 +168,36 @@ def fit_dixon_coles(matches: pd.DataFrame, half_life_days: float = 730.0,
     atk = res.x[:n]
     atk = atk - atk.mean()
     dfc = res.x[n:2 * n]
+    disp = estimate_dispersion(df)  # rough from the filtered df used in fit
     return DixonColes(
         teams=teams, attack=atk, defence=dfc,
         home_adv=float(res.x[2 * n]), rho=float(res.x[2 * n + 1]),
         _idx=idx, avg_attack=float(atk.mean()), avg_defence=float(dfc.mean()),
+        dispersion=float(np.clip(disp, 1.0, 2.0)),
     )
+
+
+def estimate_dispersion(matches: pd.DataFrame, min_mean: float = 0.5) -> float:
+    """Estima dispersão média (var / mean) dos gols históricos.
+    >1 indica overdispersion."""
+    hg = matches['home_score'].to_numpy()
+    ag = matches['away_score'].to_numpy()
+    means = []
+    for g in [hg, ag]:
+        m = np.mean(g)
+        v = np.var(g)
+        if m > min_mean:
+            means.append(v / m)
+    return float(np.mean(means)) if means else 1.0
 
 
 if __name__ == "__main__":
     from wc2026.data import load_matches
 
-    model = fit_dixon_coles(load_matches())
-    print(f"home_adv={model.home_adv:.3f}  rho={model.rho:.3f}  times={len(model.teams)}")
+    matches = load_matches()
+    model = fit_dixon_coles(matches)
+    disp = estimate_dispersion(matches)
+    print(f"home_adv={model.home_adv:.3f}  rho={model.rho:.3f}  times={len(model.teams)}  estimated_dispersion={disp:.2f}")
     for h, a in [("Brazil", "Morocco"), ("Argentina", "Jordan"), ("Spain", "Uruguay")]:
         ph, pd_, pa = model.outcome_probs(h, a)
         lam, mu = model.expected_goals(h, a)

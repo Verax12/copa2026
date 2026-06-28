@@ -48,7 +48,11 @@ class EnsembleGoalModel:
 
 def build_ensemble(matches: pd.DataFrame, w: float = 0.5) -> EnsembleGoalModel:
     dc = fit_dixon_coles(matches)
-    ml = MLGoalModel(train(build_features(matches)), current_state(matches), all_teams())
+    ml_gm = train(build_features(matches))
+    ml = MLGoalModel(ml_gm, current_state(matches), all_teams())
+    # propagate dispersion
+    if hasattr(dc, 'dispersion'):
+        ml.dispersion = dc.dispersion
     return EnsembleGoalModel(dc, ml, w)
 
 
