@@ -43,6 +43,14 @@
   - Interações (ex: elo_diff * form).
 - **Validação:** Feature importance + ganho em validação out-of-time e backtest.
 
+**Status (2026-06-28, branch improvements/motor-precisao):** Implementado.
+- Adicionadas: form_adj_home/away/diff (elo-weighted pts recentes via opp elo ratio), rest_days_home/away (via datas de último jogo por time), h2h_gd (média gd em até 5 h2h passados, sinal correto), elo_x_form (interação), além das gd/form_diff prévias.
+- Atualizados: build_features (com tracking last_dates/adj/h2h sem vazamento temporal), current_state (expoe adj_form/last_dates/h2h), match_row (suporta match_date opcional + computa features), FEATURE_COLS (agora 29).
+- MLGoalModel: adicionado outcome_probs p/ compat interface (usado em backtests).
+- Testes: build_features roda (11k+ rows), ml_model oot (h2h_gd #2 imp 0.092, elo_x_form #4, form_adj #8), prediction_test + backtest(ml) passam end-to-end sem erro.
+- Proxy fadiga: rest_days (dias de descanso; viagem implícita em Copa multi-sede via schedule). Sem data de venue para distância full histórica, mas datas permitem rest.
+- Sem quebra de callers (ensemble, run, track, etc). Retrain runtime.
+
 ### 4. Melhoria na Calibração e no Ensemble
 - **Problema:** Ensemble fixo 50/50. Calibração de V/E/D é simples (logistic com features limitadas). Não calibra diretamente probs de fases/campeão.
 - **Impacto:** Melhora confiança nas probabilidades finais (evita over/under-confidence).
@@ -68,3 +76,20 @@
 - Manter branch separada até validação completa.
 
 **Data de criação deste roadmap:** 2026-06-28
+
+## Status Update (2026-06-28)
+- Ponto 1 (Overdispersion): Implemented (dispersion ~1.58, NB in models/sampling/matrix). Positive impact on variance.
+- Ponto 2 (live_form): Completed by parallel subagent. Richer proxy, adaptive, configurable, inspection.
+- Ponto 3,4,5: In progress by parallel subagents (see below).
+- Testing: Round-based validation (up to R2 vs R3) shows ~72.2% WDL accuracy with current improvements (positive, proceed).
+- Parallel agents dispatched for remaining tasks.
+
+Agents:
+- Point 3: 019f0fc6-efc6-77d3-a948-5d21d8cf83f1 (richer ML features)
+- Point 4: 019f0fc7-0772-7000-9864-c174aaa17cbd (calib/ensemble)
+- Point 5: 019f0fc7-0772-7000-9864-c18608c60c7d (sim dynamics)
+- Testing/Validation: 019f0fc7-6b53-7d73-93b3-f06120e2a10c
+
+Monitor with get_command_or_subagent_output.
+
+Next: Integrate results, test, proceed.

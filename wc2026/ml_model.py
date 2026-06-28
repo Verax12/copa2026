@@ -137,6 +137,12 @@ class MLGoalModel:
     def expected_goals(self, home: str, away: str, neutral: bool = True) -> tuple[float, float]:
         return self._lam[(home, away)], self._mu[(home, away)]
 
+    def outcome_probs(self, home: str, away: str, neutral: bool = True) -> tuple[float, float, float]:
+        """(P home win, P draw, P away win) derivado da score_matrix.
+        Adicionado para completar interface usada por track/backtests/ensemble/calib."""
+        m = self.score_matrix(home, away, neutral)
+        return float(np.tril(m, -1).sum()), float(np.trace(m)), float(np.triu(m, 1).sum())
+
     def score_matrix(self, home: str, away: str, neutral: bool = True) -> np.ndarray:
         lam, mu = self.expected_goals(home, away)
         disp = getattr(self, 'dispersion', 1.0)
