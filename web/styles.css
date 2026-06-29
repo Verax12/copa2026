@@ -831,6 +831,10 @@ select.tsel:focus { outline: none; border-color: var(--red); }
 .mtile-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--border); }
 .mtile-stad { font-family: var(--font-cond); font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mtile-pred { font-family: var(--font-cond); font-weight: 700; font-size: 11px; color: var(--purple); white-space: nowrap; }
+.mtile-kickoff { font-family: var(--font-cond); font-size: 11px; color: var(--text-muted); margin-top: -4px; }
+.mtile.ko { border-color: var(--red); box-shadow: 0 1px 0 rgba(212,21,21,.06); }
+.mtile.ko .mtile-grp { color: var(--red); }
+.mtile.ko .mtile-kickoff { color: var(--brand-black); font-weight: 600; }
 
 /* ── MODAL ──────────────────────────────────────── */
 .modal-overlay {
@@ -1115,3 +1119,6 @@ button:focus:not(:focus-visible),
 
 /* selo do favorito no tile do calendário */
 .mtile-fav { margin-top: 6px; display: flex; }
+
+/* placeholder de bandeira quando a seleção do mata-mata ainda é "a definir" */
+.mm-hero-tbd { background: rgba(255,255,255,.1); border-style: dashed; border-color: rgba(255,255,255,.35); }

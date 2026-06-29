@@ -34,7 +34,7 @@ from .elo import BASE_RATING
 from .goal_model import DixonColes
 from .groups import GROUPS
 from .bracket import resolve_r32, R16_PAIRS, QF_PAIRS, SF_PAIRS
-from .venue import score_matrix_with_venue
+from .venue import score_matrix_with_venue, host_advantage_side
 
 
 def _played_lookup(played: pd.DataFrame) -> dict[tuple[str, str], tuple[int, int]]:
@@ -44,20 +44,27 @@ def _played_lookup(played: pd.DataFrame) -> dict[tuple[str, str], tuple[int, int
     return d
 
 
-def _precompute(model: DixonColes, teams: list[str]) -> dict[tuple[str, str], np.ndarray]:
-    """Cumulativo do flatten da matriz de placar p/ cada par (amostragem rápida)."""
-    cache = {}
+def _precompute(model: DixonColes, teams: list[str]):
+    """Cumulativo do flatten da matriz de placar p/ cada par (amostragem rápida).
+    Retorna caches separados para venue, neutral e forced (R32 explicit home)."""
+    cache_v = {}
+    cache_n = {}
+    cache_f = {}
     for h in teams:
         for a in teams:
             if h == a:
                 continue
-            m = score_matrix_with_venue(model, h, a)
-            cache[(h, a)] = (np.cumsum(m.ravel()), m.shape[1])
-    return cache
+            mv = score_matrix_with_venue(model, h, a)
+            cache_v[(h, a)] = (np.cumsum(mv.ravel()), mv.shape[1])
+            mn = model.score_matrix(h, a, neutral=True)
+            cache_n[(h, a)] = (np.cumsum(mn.ravel()), mn.shape[1])
+            mf = model.score_matrix(h, a, neutral=False)
+            cache_f[(h, a)] = (np.cumsum(mf.ravel()), mf.shape[1])
+    return cache_v, cache_n, cache_f
 
 
-def _sample(cache, key, rng) -> tuple[int, int]:
-    cum, ncols = cache[key]
+def _sample(cach, key, rng) -> tuple[int, int]:
+    cum, ncols = cach[key]
     k = int(np.searchsorted(cum, rng.random() * cum[-1]))
     return k // ncols, k % ncols
 
@@ -84,10 +91,11 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
     red_prob = float(dynamics.get("red_card_prob", 0.022))
     red_impact = float(dynamics.get("red_impact", 0.22))
     mom_factor = float(dynamics.get("momentum_factor", 0.035))
+    ko_var = float(dynamics.get("ko_var", 0.06))  # extra variance for KO stages (R32+)
 
     rng = np.random.default_rng(seed)
     teams = [t for g in GROUPS.values() for t in g]
-    cache = _precompute(model, teams)
+    cache_venue, cache_neutral, cache_forced = _precompute(model, teams)
     real = _played_lookup(played)
     elo_of = {t: elo.get(t, BASE_RATING) for t in teams}
 
@@ -146,9 +154,12 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
         "final": pd.Timestamp("2026-07-19"),
     }
 
-    def _match_score(h: str, a: str, match_date: pd.Timestamp | None = None) -> tuple[int, int]:
+    def _match_score(h: str, a: str, match_date: pd.Timestamp | None = None,
+                     r32_home: bool = False, ko_var: float = 0.0) -> tuple[int, int]:
         """Sample (or lookup real) score, applying dynamics if enabled. Updates state only for simulated matches.
         match_date used for rest days calc (fatigue). Always counts games for later fatigue even on reals.
+        r32_home: use explicit non-neutral for designated home in known R32 fixtures.
+        ko_var: extra random scale on adj for wider variance in KO stages.
         """
         if match_date is None:
             match_date = pd.Timestamp("2026-06-20")
@@ -197,13 +208,30 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
 
         adj_h = max(0.55, 1.0 - fat_h + mom_h)
         adj_a = max(0.55, 1.0 - fat_a + mom_a)
+        if ko_var > 0.0:
+            # increase uncertainty / wider variance specifically for KO rounds
+            adj_h = max(0.40, adj_h * (1.0 + rng.normal(0.0, ko_var)))
+            adj_a = max(0.40, adj_a * (1.0 + rng.normal(0.0, ko_var)))
+
+        # venue / explicit home for R32
+        side = host_advantage_side(h, a)
+        use_forced = (side == 0 and r32_home)
 
         if hasattr(model, "sample_score"):
-            g1, g2 = model.sample_score(h, a, rng, neutral=True)
+            if side > 0:
+                g1, g2 = model.sample_score(h, a, rng, neutral=False)
+            elif side < 0:
+                ga, gh = model.sample_score(a, h, rng, neutral=False)
+                g1, g2 = gh, ga
+            else:
+                g1, g2 = model.sample_score(h, a, rng, neutral=not use_forced)
             g1 = max(0, int(g1 * adj_h))
             g2 = max(0, int(g2 * adj_a))
         else:
-            g1, g2 = _sample(cache, (h, a), rng)
+            if use_forced:
+                g1, g2 = _sample(cache_forced, (h, a), rng)
+            else:
+                g1, g2 = _sample(cache_venue, (h, a), rng)
             g1 = max(0, int(g1 * adj_h))
             g2 = max(0, int(g2 * adj_a))
 
@@ -236,17 +264,32 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
 
     # legacy alias for minimal diff in group code
     def play(h: str, a: str, match_date: pd.Timestamp | None = None) -> tuple[int, int]:
-        return _match_score(h, a, match_date)
+        return _match_score(h, a, match_date, r32_home=False, ko_var=0.0)
 
-    def knockout(h: str, a: str, match_date: pd.Timestamp | None = None) -> str:
-        """Knockout match with dynamics (samples score via _match_score then decides)."""
-        hg, ag = _match_score(h, a, match_date)
+    def knockout(h: str, a: str, match_date: pd.Timestamp | None = None, r32_home: bool = False, ko_var: float = 0.0) -> str:
+        """Knockout match with dynamics (samples score via _match_score then decides).
+        R32 uses explicit designated home (first in resolved pair) for venue adv.
+        ET modeled before pens for refined KO handling.
+        """
+        hg, ag = _match_score(h, a, match_date, r32_home=r32_home, ko_var=ko_var)
+        if hg > ag:
+            return h
+        if ag > hg:
+            return a
+        # refine: extra time (30min) before pens (lower scoring rate)
+        et_h = int(rng.poisson(0.40))
+        et_a = int(rng.poisson(0.40))
+        hg += et_h
+        ag += et_a
         if hg > ag:
             return h
         if ag > hg:
             return a
         # pênaltis: probabilidade calibrada no histórico real (quase 50/50)
+        # slight designated home boost if r32 (or passed) but keep small
+        home_bonus = 0.03 if r32_home else 0.0
         pa = 1.0 / (1.0 + np.exp(-shootout_beta * (elo_of[h] - elo_of[a])))
+        pa = float(np.clip(pa + home_bonus, 0.35, 0.65))
         return h if rng.random() < pa else a
 
     def _prop_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -323,15 +366,15 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
         # mata-mata: bracket FIXO oficial da FIFA (jogos 73-104)
         # apply dynamics + dates for rest/momentum between rounds
         r32 = resolve_r32(qualified, third_by_group, best_third_groups)
-        w32 = [knockout(h, a, KO_DATES["r32"]) for h, a in r32]
-        w16 = [knockout(w32[i], w32[j], KO_DATES["r16"]) for i, j in R16_PAIRS]
-        w8 = [knockout(w16[i], w16[j], KO_DATES["qf"]) for i, j in QF_PAIRS]
+        w32 = [knockout(h, a, KO_DATES["r32"], r32_home=True, ko_var=ko_var) for h, a in r32]
+        w16 = [knockout(w32[i], w32[j], KO_DATES["r16"], ko_var=ko_var) for i, j in R16_PAIRS]
+        w8 = [knockout(w16[i], w16[j], KO_DATES["qf"], ko_var=ko_var) for i, j in QF_PAIRS]
         for t in w8:
             semi[t] += 1
-        finalists = [knockout(w8[i], w8[j], KO_DATES["sf"]) for i, j in SF_PAIRS]
+        finalists = [knockout(w8[i], w8[j], KO_DATES["sf"], ko_var=ko_var) for i, j in SF_PAIRS]
         for t in finalists:
             final[t] += 1
-        champ[knockout(finalists[0], finalists[1], KO_DATES["final"])] += 1
+        champ[knockout(finalists[0], finalists[1], KO_DATES["final"], ko_var=ko_var)] += 1
 
     rows = []
     for t in teams:

@@ -1,0 +1,191 @@
+======================================================================
+COMPREHENSIVE VALIDATION: Prediction Motor (Copa 2026)
+Data up to end of SECOND ROUND (all teams played 2 matches)
+Predict & validate on THIRD ROUND + final group standings
+Using current branch improvements (P1 dispersion, P2 live, P3 features, P5 fatigue)
+======================================================================
+
+Cutoff date for 2nd round: 2026-06-23
+Played matches up to R2 (fixed in sim): 48
+Third round matches to predict/validate: 24
+Date range R3: 2026-06-24 to 2026-06-27
+
+Training base model on limited data: 49453 matches (pre + WC <= cutoff)
+
+[1/6] Computing Elo ratings (limited data only)...
+[2/6] Building EnsembleGoalModel (P1: dispersion/NB + P3: richer ML features)...
+[3/6] Gathering & applying Live Form adjustments (P2: enriched xG-proxy + territory + adaptive shrink)...
+     Live stats available up to cutoff: 10 / 10 rows
+     Live adjustment WRAPPED. Multipliers (sample):
+       {'Mexico': 0.953, 'South Africa': 1.003, 'United States': 1.111, 'Paraguay': 0.892, 'Brazil': 1.055, 'Morocco': 0.981}
+[4/6] Applying Outcome Calibration (blend with temporal V/E/D logistic)...
+     Calibration applied (alpha=0.5 blend; clf trained pre-cup).
+[5/6] Calibrating shootout beta...
+[6/6] Running Monte Carlo simulation with R2 data (5000 sims for stability, seed=42)...
+     (includes P5: basic fatigue dynamics in sim)
+
+======================================================================
+PREDICTED CHAMPION / PHASE PROBS (model trained + live on data <= R2)
+======================================================================
+         team  champion_%  finalist_%  semifinal_%  advance_%  exp_pts  p_first_%  p_second_%
+    Argentina       17.94       30.08        47.78      100.0   8.6754     100.00        0.00
+        Spain       13.36       21.48        35.22      100.0   6.0838      88.14        7.20
+       France        9.46       18.12        32.72      100.0   7.4956      79.80       20.20
+      England        7.26       12.96        25.02      100.0   6.1478      76.90       23.00
+     Colombia        6.10       12.12        23.82      100.0   7.3352      76.92       23.08
+       Brazil        5.68       10.64        21.10      100.0   6.0932      60.16       28.84
+      Germany        4.76       10.18        19.76      100.0   7.8816      99.22        0.78
+     Portugal        4.30        9.20        17.10      100.0   5.1786      23.08       76.46
+United States        4.02        9.08        20.68      100.0   8.0572      99.06        0.94
+  Netherlands        3.82        8.02        16.12      100.0   6.1326      67.64       32.18
+
+======================================================================
+PER-MATCH WDL VALIDATION vs ACTUAL RESULTS (THIRD ROUND)
+======================================================================
+
+Matches validated: 24
+WDL accuracy (argmax): 15/24 = 62.5%
+Brier score (multiclass): 0.4725   (uniform baseline ~0.6667; lower=better)
+Log-loss: 0.8182   (lower=better)
+
+Detailed per-match (R3):
+  2026-06-24  Morocco              4-2 Haiti                | V 67.9% E 25.2% D  6.9% -> HIT
+  2026-06-24  Canada               1-2 Switzerland          | V 29.5% E 29.2% D 41.3% -> HIT
+  2026-06-24  Bosnia and Herzegovina 3-1 Qatar                | V 55.5% E 28.2% D 16.3% -> HIT
+  2026-06-24  Mexico               3-0 Czech Republic       | V 48.3% E 27.2% D 24.5% -> HIT
+  2026-06-24  Scotland             0-3 Brazil               | V 19.4% E 26.7% D 53.9% -> HIT
+  2026-06-24  South Africa         1-0 South Korea          | V 24.7% E 30.1% D 45.2% -> MISS
+  2026-06-25  Tunisia              1-3 Netherlands          | V 11.9% E 25.3% D 62.7% -> HIT
+  2026-06-25  Japan                1-1 Sweden               | V 53.5% E 28.4% D 18.1% -> MISS
+  2026-06-25  Ecuador              2-1 Germany              | V 29.8% E 32.3% D 37.9% -> MISS
+  2026-06-25  United States        2-3 Turkey               | V 47.6% E 24.5% D 28.0% -> MISS
+  2026-06-25  Paraguay             0-0 Australia            | V 29.0% E 32.5% D 38.5% -> MISS
+  2026-06-25  Curaçao              0-2 Ivory Coast          | V  5.4% E 28.4% D 66.2% -> HIT
+  2026-06-26  Senegal              5-0 Iraq                 | V 58.3% E 30.1% D 11.6% -> HIT
+  2026-06-26  New Zealand          1-5 Belgium              | V  6.6% E 28.5% D 64.9% -> HIT
+  2026-06-26  Egypt                1-1 Iran                 | V 31.7% E 32.4% D 35.9% -> MISS
+  2026-06-26  Cape Verde           0-0 Saudi Arabia         | V 34.4% E 32.7% D 32.9% -> MISS
+  2026-06-26  Uruguay              0-1 Spain                | V 21.7% E 28.9% D 49.4% -> HIT
+  2026-06-26  Norway               1-4 France               | V 25.7% E 26.8% D 47.5% -> HIT
+  2026-06-27  Jordan               1-3 Argentina            | V  2.6% E 24.1% D 73.3% -> HIT
+  2026-06-27  DR Congo             3-1 Uzbekistan           | V 36.8% E 35.6% D 27.6% -> HIT
+  2026-06-27  Colombia             0-0 Portugal             | V 32.6% E 28.6% D 38.7% -> MISS
+  2026-06-27  Panama               0-2 England              | V  8.5% E 20.8% D 70.7% -> HIT
+  2026-06-27  Algeria              3-3 Austria              | V 32.9% E 31.0% D 36.1% -> MISS
+  2026-06-27  Croatia              2-1 Ghana                | V 58.5% E 30.1% D 11.4% -> HIT
+
+[Reference] Quick Elo baseline accuracy on same R3 matches:
+  Rough Elo argmax acc on R3: 14/24 = 58.3% (note: no draw model)
+
+======================================================================
+GROUP STANDINGS & QUALIFICATION VALIDATION
+======================================================================
+
+Actual final group top-2 (advancers):
+  Group A: 1.Mexico (9pts)  2.South Africa (4pts)
+  Group B: 1.Switzerland (7pts)  2.Canada (4pts)
+  Group C: 1.Brazil (7pts)  2.Morocco (7pts)
+  Group D: 1.United States (6pts)  2.Australia (4pts)
+  Group E: 1.Germany (6pts)  2.Ivory Coast (6pts)
+  Group F: 1.Netherlands (7pts)  2.Japan (5pts)
+  Group G: 1.Belgium (5pts)  2.Egypt (5pts)
+  Group H: 1.Spain (7pts)  2.Cape Verde (3pts)
+  Group I: 1.France (9pts)  2.Norway (6pts)
+  Group J: 1.Argentina (9pts)  2.Austria (4pts)
+  Group K: 1.Colombia (7pts)  2.Portugal (5pts)
+  Group L: 1.England (7pts)  2.Croatia (6pts)
+
+Actual 8 best 3rds (by pts/gd/gf): ['DR Congo', 'Sweden', 'Ecuador', 'Ghana', 'Bosnia and Herzegovina', 'Algeria', 'Paraguay', 'Senegal']
+Total actual qualified for R32: 32 teams
+
+Predicted vs Actual (using exp_pts from Monte Carlo as ranking proxy; positions from sims):
+  Grp A:
+    PRED (by exp_pts): ['Mexico', 'South Korea', 'South Africa', 'Czech Republic']  pts~[8.09, 5.01, 1.66, 1.63]
+    ACTL:              ['Mexico', 'South Africa', 'South Korea', 'Czech Republic']
+  Grp B:
+    PRED (by exp_pts): ['Switzerland', 'Canada', 'Bosnia and Herzegovina', 'Qatar']  pts~[5.4, 5.11, 2.52, 2.02]
+    ACTL:              ['Switzerland', 'Canada', 'Bosnia and Herzegovina', 'Qatar']
+  Grp C:
+    PRED (by exp_pts): ['Morocco', 'Brazil', 'Scotland', 'Haiti']  pts~[6.5, 6.09, 3.62, 0.29]
+    ACTL:              ['Brazil', 'Morocco', 'Scotland', 'Haiti']
+  Grp D:
+    PRED (by exp_pts): ['United States', 'Australia', 'Paraguay', 'Turkey']  pts~[8.06, 4.45, 4.23, 0.68]
+    ACTL:              ['United States', 'Australia', 'Paraguay', 'Turkey']
+  Grp E:
+    PRED (by exp_pts): ['Germany', 'Ivory Coast', 'Ecuador', 'Curaçao']  pts~[7.88, 5.53, 1.78, 1.26]
+    ACTL:              ['Germany', 'Ivory Coast', 'Ecuador', 'Curaçao']
+  Grp F:
+    PRED (by exp_pts): ['Netherlands', 'Japan', 'Sweden', 'Tunisia']  pts~[6.13, 5.7, 3.84, 0.48]
+    ACTL:              ['Netherlands', 'Japan', 'Sweden', 'Tunisia']
+  Grp G:
+    PRED (by exp_pts): ['Egypt', 'Belgium', 'Iran', 'New Zealand']  pts~[5.29, 4.44, 3.38, 1.33]
+    ACTL:              ['Belgium', 'Egypt', 'Iran', 'New Zealand']
+  Grp H:
+    PRED (by exp_pts): ['Spain', 'Cape Verde', 'Uruguay', 'Saudi Arabia']  pts~[6.08, 3.74, 2.62, 1.87]
+    ACTL:              ['Spain', 'Cape Verde', 'Uruguay', 'Saudi Arabia']
+  Grp I:
+    PRED (by exp_pts): ['France', 'Norway', 'Senegal', 'Iraq']  pts~[7.5, 7.06, 1.79, 0.73]
+    ACTL:              ['France', 'Norway', 'Senegal', 'Iraq']
+  Grp J:
+    PRED (by exp_pts): ['Argentina', 'Algeria', 'Austria', 'Jordan']  pts~[8.68, 4.25, 4.22, 0.17]
+    ACTL:              ['Argentina', 'Austria', 'Algeria', 'Jordan']
+  Grp K:
+    PRED (by exp_pts): ['Colombia', 'Portugal', 'DR Congo', 'Uzbekistan']  pts~[7.34, 5.18, 2.26, 1.17]
+    ACTL:              ['Colombia', 'Portugal', 'DR Congo', 'Uzbekistan']
+  Grp L:
+    PRED (by exp_pts): ['England', 'Croatia', 'Ghana', 'Panama']  pts~[6.15, 4.81, 4.71, 0.47]
+    ACTL:              ['England', 'Croatia', 'Ghana', 'Panama']
+
+Group position summary (R2 model):
+  Correct 1st place predictions: 10/12 (83.3%)
+  Top-2 slot hits (of 24): 22/24 (91.7%)
+
+Advance probability calibration check (actual qualifiers vs non):
+  Actual qualified (32): mean advance_% = 87.4%  (range 11.3-100.0%)
+  Non-qualified (16):   mean advance_% = 25.2%    (range 0.0-97.6%)
+
+Champion probabilities (cannot validate vs actual - no knockout results in data yet):
+  Top 5 from R2 model: Argentina 17.94
+    Spain 13.36
+   France  9.46
+  England  7.26
+ Colombia  6.10
+
+======================================================================
+REFERENCE: Full-data model run (all 72 WC matches in training - has lookahead bias)
+           (to observe how R3 results updated the table)
+======================================================================
+Top 5 champion% full-data: Argentina 19.25 100.0
+    Spain 14.40 100.0
+   France  9.80 100.0
+ Colombia  7.75 100.0
+  England  7.70 100.0
+Overlap in top5 champions R2 vs full: 5/5
+
+======================================================================
+VALIDATION SUMMARY REPORT
+======================================================================
+Cutoff used: 2026-06-23 (end of 2nd round / matchday 2)
+Training data leakage avoided: yes (matches_limited date <= cutoff; live stats filtered)
+Improvements active: P1(dispersion NB), P2(live enriched + adaptive), ensemble w=0.55, calib, fatigue sim, venue, richer features
+
+Third round WDL:
+  Accuracy: 62.5% (15/24)
+  Brier:    0.4725
+  Logloss:  0.8182
+
+Group standings (per group):
+  1st place match rate: 10/12 (83.3%)
+  Top-2 slot recovery:  22/24 (91.7%)
+
+Advance prob discrimination:
+  Qualified mean adv%: 87.4% vs non: 25.2% (delta ~62.2pp)
+
+Notes:
+  - All 72 are group stage; no KO results available for champion/finalist validation.
+  - Live data sparse (only early MD1 stats); most multipliers ~1.0.
+  - Model uses current improvements on branch improvements/motor-precisao.
+
+[OBSERVATION] Solid WDL holdout acc. Current improvements appear beneficial for intra-cup prediction.
+
+Test complete. Script improved from /tmp/test_rounds.py for comprehensive validation.

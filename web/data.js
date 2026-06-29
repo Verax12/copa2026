@@ -185,6 +185,7 @@
   function matchSlug(entry) {
     if (!entry) return "";
     const h = byId(entry.home), a = byId(entry.away);
+    if (!h || !a) return "";   // confronto de mata-mata ainda "a definir" (sem slug)
     return `${entry.date}-${slug(h.en)}-vs-${slug(a.en)}`;
   }
   function matchFromKey(key) {
@@ -195,6 +196,7 @@
     // fallback: permite /jogo/brasil-vs-marrocos ou com nomes em PT
     return (WD.calendar || []).find(c => {
       const h = byId(c.home), a = byId(c.away);
+      if (!h || !a) return false;   // jogos de mata-mata "a definir" não têm slug
       const variants = [
         `${slug(h.en)}-vs-${slug(a.en)}`, `${slug(h.pt)}-vs-${slug(a.pt)}`,
         `${slug(a.en)}-vs-${slug(h.en)}`, `${slug(a.pt)}-vs-${slug(h.pt)}`,
@@ -241,6 +243,6 @@
   function snapW(w) { return w <= 40 ? 40 : w <= 80 ? 80 : w <= 160 ? 160 : w <= 320 ? 320 : 640; }
   window.WC = {
     flag: (iso, w) => `https://flagcdn.com/w${snapW(w || 40)}/${iso}.png`,
-    name: (id, lang) => (lang === "en" ? byId(id).en : byId(id).pt)
+    name: (id, lang) => { const t = byId(id); return t ? (lang === "en" ? t.en : t.pt) : (lang === "en" ? "TBD" : "A definir"); }
   };
 })();

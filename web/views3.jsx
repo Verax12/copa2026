@@ -104,6 +104,7 @@ function CalendarView({ lang, openMatch, initFilters, onRouteChange }) {
   const total = (D.calendar || []).length;
   const playedN = (D.calendar || []).filter(g => g.played).length;
   const upcomingN = total - playedN;
+  const koN = (D.calendar || []).filter(g => g.round).length;
 
   const sortedTeams = useMemo(() =>
     [...D.teams].sort((a, b) => WC.name(a.id, lang).localeCompare(WC.name(b.id, lang))), [lang]);
@@ -134,7 +135,8 @@ function CalendarView({ lang, openMatch, initFilters, onRouteChange }) {
         const tid = D.teamFromKey(filters.team);
         if (tid == null || (g.home !== tid && g.away !== tid)) return false;
       }
-      if (filters.group !== "all" && g.group !== filters.group) return false;
+      if (filters.group === "__ko" && !g.round) return false;
+      if (filters.group !== "all" && filters.group !== "__ko" && g.group !== filters.group) return false;
       if (filters.venue !== "all" && venueKey(g) !== filters.venue) return false;
       return true;
     }) }))
@@ -147,7 +149,7 @@ function CalendarView({ lang, openMatch, initFilters, onRouteChange }) {
     <div className="fade-in">
       <div className="section-head">
         <div>
-          <div className="eyebrow">{pt ? "Fase de grupos" : "Group stage"}</div>
+          <div className="eyebrow">{filters.group === "__ko" ? (pt ? "Mata-mata (R32+)" : "Knockout stage (R32+)") : (pt ? "Fase de grupos" : "Group stage")}</div>
           <h2>{pt ? "Calendário" : "Calendar"}</h2>
           <p>{pt ? "Clique em qualquer jogo para abrir os detalhes (escalação de gols, estatísticas e previsão) sem sair desta página."
                  : "Click any game to open its details (goals, stats and prediction) without leaving this page."}</p>
@@ -161,6 +163,7 @@ function CalendarView({ lang, openMatch, initFilters, onRouteChange }) {
           <button className={"chip" + (filters.status === "all" ? " on" : "")} onClick={() => updateFilter("status", "all")}>{pt ? "Todos" : "All"} <b>{total}</b></button>
           <button className={"chip" + (filters.status === "played" ? " on" : "")} onClick={() => updateFilter("status", "played")}>{pt ? "Realizados" : "Played"} <b>{playedN}</b></button>
           <button className={"chip" + (filters.status === "upcoming" ? " on" : "")} onClick={() => updateFilter("status", "upcoming")}>{pt ? "A jogar" : "Upcoming"} <b>{upcomingN}</b></button>
+          <button className={"chip" + (filters.group === "__ko" ? " on" : "")} onClick={() => updateFilter("group", "__ko")}>{pt ? "Mata-mata" : "KO"} <b>{koN}</b></button>
         </div>
       </div>
 
@@ -179,6 +182,7 @@ function CalendarView({ lang, openMatch, initFilters, onRouteChange }) {
             <select value={filters.group} onChange={e => updateFilter("group", e.target.value)}>
               <option value="all">{pt ? "Todos" : "All"}</option>
               {D.GROUP_LABELS.map(g => <option key={g} value={g}>{pt ? "Grupo" : "Group"} {g}</option>)}
+              <option value="__ko">{pt ? "Mata-mata (R32+)" : "Knockout (R32+)"}</option>
             </select>
           </label>
           <label>
@@ -229,26 +233,42 @@ function MatchTile({ g, lang, onClick }) {
   const time = g.kickoff.br || g.kickoff.local;
   const homeWin = g.played && g.actual[0] > g.actual[1];
   const awayWin = g.played && g.actual[1] > g.actual[0];
+  const roundMap = {
+    "R32": pt ? "R32" : "R32",
+    "Round of 16": pt ? "Oitavas" : "R16",
+    "Quarter-final": pt ? "Quartas" : "QF",
+    "Semi-final": pt ? "Semifinais" : "SF",
+    "Final": pt ? "Final" : "Final",
+    "Match for third place": pt ? "3º lugar" : "3rd",
+  };
+  const phaseLabel = g.round ? (roundMap[g.round] || g.round) : (g.group ? `${pt ? "Grupo" : "Grp"} ${g.group}` : "");
   return (
-    <button className={"mtile" + (g.played ? " played" : "")} onClick={onClick}
+    <button className={"mtile" + (g.played ? " played" : "") + (g.round ? " ko" : "")} onClick={onClick}
             title={pt ? "Ver detalhes do jogo" : "See match details"}>
       <div className="mtile-top">
-        <span className="mtile-grp">{pt ? "Grupo" : "Grp"} {g.group}</span>
-        <span className={"mtile-status" + (g.played ? " ft" : "")}>{g.played ? (pt ? "Encerrado" : "Full-time") : `${time}${g.kickoff.br ? " BR" : ""}`}</span>
+        <span className="mtile-grp">{phaseLabel}</span>
+        <span className={"mtile-status" + (g.played ? " ft" : "")}>{g.played ? (pt ? "Encerrado" : "Full-time") : time}</span>
       </div>
+      <div className="mtile-kickoff">🕒 {time}{g.kickoff && g.kickoff.br ? " BR" : ""}</div>
       <div className="mtile-row">
-        <span className={"mtile-team" + (homeWin ? " win" : "")}><Flag id={g.home} w={26} /><span className="nm">{WC.name(g.home, lang)}</span></span>
+        <span className={"mtile-team" + (homeWin ? " win" : "")}>
+          {g.home != null ? <Flag id={g.home} w={26} /> : null}
+          <span className="nm">{g.tbd_home ? `Vencedor jogo ${g.tbd_home.slice(1)}` : (g.home != null ? WC.name(g.home, lang) : "TBD")}</span>
+        </span>
         <span className="mtile-sc">{g.played ? g.actual[0] : ""}</span>
       </div>
       <div className="mtile-row">
-        <span className={"mtile-team" + (awayWin ? " win" : "")}><Flag id={g.away} w={26} /><span className="nm">{WC.name(g.away, lang)}</span></span>
+        <span className={"mtile-team" + (awayWin ? " win" : "")}>
+          {g.away != null ? <Flag id={g.away} w={26} /> : null}
+          <span className="nm">{g.tbd_away ? `Vencedor jogo ${g.tbd_away.slice(1)}` : (g.away != null ? WC.name(g.away, lang) : "TBD")}</span>
+        </span>
         <span className="mtile-sc">{g.played ? g.actual[1] : ""}</span>
       </div>
       <div className="mtile-foot">
         <span className="mtile-stad">🏟️ {g.stadium}</span>
-        {!g.played && <span className="mtile-pred">{pt ? "Prev." : "Pred."} {g.pred.score[0]}–{g.pred.score[1]}</span>}
+        {!g.played && g.pred && g.pred.score && <span className="mtile-pred">{pt ? "Prev." : "Pred."} {g.pred.score[0]}–{g.pred.score[1]}</span>}
       </div>
-      {!g.played && (
+      {!g.played && g.pred && g.home != null && g.away != null && (
         <div className="mtile-fav">
           <FavoriteBadge ph={g.pred.ph} pd={g.pred.pd} pa={g.pred.pa} home={g.home} away={g.away} lang={lang} size="sm" />
         </div>
@@ -317,12 +337,12 @@ function MatchPoster({ entry, f, k, lang }) {
   return (
     <div className="mm-hero" role="img" aria-label={aria}>
       <div className="mm-hero-row">
-        <img className="mm-hero-flag" src={WC.flag(home.iso, 160)} alt="" loading="lazy" />
+        {home ? <img className="mm-hero-flag" src={WC.flag(home.iso, 160)} alt="" loading="lazy" /> : <span className="mm-hero-flag mm-hero-tbd" />}
         <div className="mm-hero-badge">
           <span className="mm-hero-26">26</span>
           <span className="mm-hero-cup">FIFA · {pt ? "Copa do Mundo" : "World Cup"}</span>
         </div>
-        <img className="mm-hero-flag" src={WC.flag(away.iso, 160)} alt="" loading="lazy" />
+        {away ? <img className="mm-hero-flag" src={WC.flag(away.iso, 160)} alt="" loading="lazy" /> : <span className="mm-hero-flag mm-hero-tbd" />}
       </div>
       <div className="mm-hero-meta">
         <span>📅 {f.wd}, {f.dd} {f.moLong} 2026</span>

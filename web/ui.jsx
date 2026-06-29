@@ -68,9 +68,15 @@ const I18N = {
 /* ---------- pequenos componentes ---------- */
 function Flag({ id, w, cls }) {
   const t = D.byId(id);
+  const ww = w || 40, hh = Math.round((w || 40) * 3 / 4);
+  // id indefinido (ex.: confronto de mata-mata ainda "a definir") → placeholder
+  if (!t) return React.createElement("span", {
+    className: "flag flag-tbd " + (cls || ""), "aria-hidden": "true",
+    style: { width: ww, height: hh, display: "inline-block", borderRadius: 3, background: "rgba(128,128,128,.32)" }
+  });
   return React.createElement("img", {
     className: "flag " + (cls || ""), src: WC.flag(t.iso, (w || 40) * 2),
-    alt: t.en, loading: "lazy", width: (w || 40), height: Math.round((w || 40) * 3 / 4)
+    alt: t.en, loading: "lazy", width: ww, height: hh
   });
 }
 
@@ -173,6 +179,9 @@ function Modal({ open, onClose, children, labelledBy, initialFocusSelector }) {
 function FavoriteBadge({ ph, pd, pa, home, away, lang, size }) {
   const pt = lang === "pt";
   const probs = [ph, pd, pa];
+  // sem probabilidades válidas ou com seleção indefinida (mata-mata "a definir")
+  // não há favorito a mostrar.
+  if (home == null || away == null || probs.some(p => typeof p !== "number" || isNaN(p))) return null;
   const fav = probs.indexOf(Math.max(...probs));
   const pct = Math.round(probs[fav] * 100);
   const cls = "fav-badge " + (fav === 1 ? "draw" : "win") + (size ? " " + size : "");

@@ -1,0 +1,11 @@
+Teste de predição pré-Copa -> resultados reais atuais (corte: 2026-06-11)
+
+Modelo                             V/E/D   Modo placar     Exato    Brier  Log-loss
+Sistema atual               43/72 (59.7%) 43/72 (59.7%)      8/72    0.522     0.865
+Ensemble sem calibração     43/72 (59.7%) 43/72 (59.7%)      7/72    0.518     0.875
+Dixon-Coles sem calibração  47/72 (65.3%) 47/72 (65.3%)     11/72    0.504     0.849
+
+Rating atual do sistema:
+  Acerto V/E/D: 43/72 (59.7%)
+  Brier: 0.522 | Log-loss: 0.865
+  Baseline só Elo: 63.9%

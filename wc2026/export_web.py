@@ -33,6 +33,7 @@ from .shootout import calibrate, load_shootouts
 from .simulate import simulate
 from .scoreline import favored_scoreline
 from . import bracket as B
+from .venue import expected_goals_with_venue, score_matrix_with_venue
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -190,8 +191,7 @@ def _parse_kickoff(s: str) -> dict:
 
 def build_calendar(idx: dict, model, played, track_record: dict) -> list[dict]:
     """Calendário da fase de grupos (openfootball) + previsão de cada jogo.
-    Futuro: previsão do modelo atual. Disputado: resultado real + previsão
-    pré-jogo (honesta, do track record) para o detalhe comparar."""
+    (mata-mata vem do supplement em export() usando bracket + played winners)."""
     import json as J
     import numpy as np
     from .thesportsdb import CACHE
@@ -242,7 +242,9 @@ def build_calendar(idx: dict, model, played, track_record: dict) -> list[dict]:
 
     cal = []
     for m in matches:
-        if not str(m.get("group", "")).startswith("Group"):
+        grp = str(m.get("group", ""))
+        is_group = grp.startswith("Group")
+        if not is_group:
             continue
         h, a = normalize_team(m.get("team1", "")), normalize_team(m.get("team2", ""))
         if h not in idx or a not in idx:
@@ -261,8 +263,9 @@ def build_calendar(idx: dict, model, played, track_record: dict) -> list[dict]:
         media = tsdb.get(frozenset((h, a)), {})
         entry = {
             "date": m.get("date"), "kickoff": _parse_kickoff(m.get("time", "")),
-            "group": m.get("group", "").replace("Group ", ""),
-            "round": m.get("round", ""), "num": m.get("num"),
+            "group": m.get("group", "").replace("Group ", "") if is_group else "",
+            "round": "",
+            "num": m.get("num"),
             "city": city, "stadium": stadium,
             "home": idx[h], "away": idx[a], "played": ft is not None,
             "pred": {"ph": round(ph, 3), "pd": round(pdr, 3), "pa": round(pa, 3),
@@ -358,8 +361,10 @@ def build_model(engine: str, live: bool, calibrated: bool = True):
 
 def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
            calibrated: bool = True) -> Path:
+    from .venue import expected_goals_with_venue, score_matrix_with_venue
+
     matches, played, elo, beta, model = build_model(engine, live, calibrated)
-    table = simulate(model, elo, played, n_sims=sims, shootout_beta=beta)
+    table = simulate(model, elo, played, n_sims=sims, shootout_beta=beta, return_ci=True)
 
     teams_order = all_teams()                      # ids 0..47 nesta ordem
     idx = {t: i for i, t in enumerate(teams_order)}
@@ -404,6 +409,47 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
         groups.append({"id": gi, "label": g,
                        "teamIds": [idx[t] for t in gteams], "table": tbl})
 
+    # --- standings reais dos grupos (agora que fase de grupos está completa) ---
+    # Usado para resolver R32 exato no calendário (mata-mata) com times que realmente passaram.
+    from collections import defaultdict
+    team_to_group = {}
+    for gname, gteams in GROUPS.items():
+        for t in gteams:
+            team_to_group[t] = gname
+    actual_pts = defaultdict(int)
+    actual_gf = defaultdict(int)
+    actual_ga = defaultdict(int)
+    for r in played.itertuples(index=False):
+        h, a = r.home_team, r.away_team
+        if h not in team_to_group or a not in team_to_group:
+            continue
+        if team_to_group[h] != team_to_group[a]:
+            continue  # só partidas dentro do mesmo grupo
+        hg, ag = int(r.home_score), int(r.away_score)
+        actual_gf[h] += hg; actual_ga[h] += ag
+        actual_gf[a] += ag; actual_ga[a] += hg
+        if hg > ag:
+            actual_pts[h] += 3
+        elif ag > hg:
+            actual_pts[a] += 3
+        else:
+            actual_pts[h] += 1
+            actual_pts[a] += 1
+    actual_first, actual_second, actual_third = {}, {}, {}
+    for gname, gteams in GROUPS.items():
+        order = sorted(gteams, key=lambda t: (actual_pts[t], actual_gf[t] - actual_ga[t], actual_gf[t]), reverse=True)
+        actual_first[gname] = order[0]
+        actual_second[gname] = order[1]
+        actual_third[gname] = order[2]
+
+    # patch the exported groups tables to show real pts (now that groups are complete)
+    for g in groups:
+        gname = g["label"]
+        for entry in g["table"]:
+            tname = next((nm for nm, i in idx.items() if i == entry["id"]), None)
+            if tname and tname in actual_pts:
+                entry["pts"] = actual_pts[tname]
+
     # --- probabilidades por seleção (id -> %) ---
     def probmap(col):
         return {idx[t]: round(row[t][col], 2) for t in teams_order}
@@ -412,20 +458,155 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
     semi_prob = probmap("semifinal_%")
     adv_prob = probmap("advance_%")
 
-    # --- bracket representativo: 8 melhores terceiros previstos + tabela oficial ---
-    thirds_ranked = sorted(group_labels, key=lambda g: row[predicted_third[g]]["advance_%"],
-                           reverse=True)
-    best_third_groups = sorted(thirds_ranked[:8])
+    # uncertainty bands (if return_ci) -- enhance export for later stages (KO).
+    # bandas são probabilidades em %: limitar a [0, 100] (nunca negativas).
+    def _clamp_band(lo, hi):
+        return [round(max(0.0, lo), 1), round(min(100.0, hi), 1)]
+    def probmap_ci(basecol):
+        lk = basecol.replace("%", "_ci_low")
+        hk = basecol.replace("%", "_ci_high")
+        has_ci = lk in row[teams_order[0]] if teams_order else False
+        if not has_ci:
+            # fallback small bands based on point est
+            return {idx[t]: _clamp_band(row[t][basecol] - 4, row[t][basecol] + 4) for t in teams_order}
+        return {idx[t]: _clamp_band(row[t][lk], row[t][hk]) for t in teams_order}
+    title_prob_ci = probmap_ci("champion_%")
+    final_prob_ci = probmap_ci("finalist_%")
+    semi_prob_ci = probmap_ci("semifinal_%")
+    adv_prob_ci = probmap_ci("advance_%")
+
+    # --- bracket representativo: use standings REAIS quando grupos completos (para R32 do calendário) ---
+    # Critério FIFA para 3ºs: pts, saldo de gols, gols pró
+    actual_thirds_ranked = sorted(
+        group_labels,
+        key=lambda g: (actual_pts[actual_third[g]], actual_gf[actual_third[g]] - actual_ga[actual_third[g]], actual_gf[actual_third[g]]),
+        reverse=True
+    )
+    best_third_groups = sorted(actual_thirds_ranked[:8])
     qualified = {}
     third_by_group = {}
     for g in group_labels:
-        qualified[f"1{g}"] = predicted_first[g]
-        qualified[f"2{g}"] = predicted_second[g]
-        third_by_group[g] = predicted_third[g]
+        qualified[f"1{g}"] = actual_first.get(g, predicted_first[g])
+        qualified[f"2{g}"] = actual_second.get(g, predicted_second[g])
+        third_by_group[g] = actual_third.get(g, predicted_third[g])
     r32_pairs_names = B.resolve_r32(qualified, third_by_group, best_third_groups)
     r32 = [[idx[h], idx[a]] for h, a in r32_pairs_names]
     qualifier_ids = sorted({i for pair in r32 for i in pair})
     seeds = sorted(qualifier_ids, key=lambda i: title_prob[i], reverse=True)
+
+    # supplement calendar with R32 mata-mata using resolved teams (from current sim, which fixes played groups)
+    # this way daily export inserts the teams that passed groups into the KO slots
+    import json as J
+    import numpy as np
+    from .thesportsdb import CACHE
+    ko_cal = []
+    fpk = CACHE / "openfootball_2026.json"
+    # build played lookup for KO overlay
+    played_lookup = {}
+    for r in played.itertuples(index=False):
+        if r.home_team in idx and r.away_team in idx:
+            played_lookup[(idx[r.home_team], idx[r.away_team])] = (int(r.home_score), int(r.away_score))
+            played_lookup[(idx[r.away_team], idx[r.home_team])] = (int(r.away_score), int(r.home_score))
+    played_winners = {}
+    if fpk.exists():
+        ko_matches = [m for m in J.loads(fpk.read_text()).get("matches", []) if m.get("round") == "Round of 32"]
+        for i, m in enumerate(ko_matches):
+            if i >= len(r32_pairs_names): break
+            hname, aname = r32_pairs_names[i]
+            if hname not in idx or aname not in idx: continue
+            hh, aa = idx[hname], idx[aname]
+            city, stadium = GROUND_TO_STADIUM.get(m.get("ground", ""), (m.get("ground", ""), ""))
+            # prefer actual played result if available (for pre-fill and correct played flag)
+            actual = played_lookup.get((hh, aa))
+            ft = actual is not None
+            # still compute pred from model (for upcoming or reference)
+            M = score_matrix_with_venue(model, hname, aname)
+            _, (gi, gj), (ph, pdr, pa) = favored_scoreline(M)
+            lh, la = expected_goals_with_venue(model, hname, aname)
+            flat = M.ravel()
+            topk = np.argsort(flat)[::-1][:3]
+            top = [[int(k // M.shape[1]), int(k % M.shape[1]), round(float(flat[k]), 3)] for k in topk]
+            entry = {
+                "date": m.get("date"), "kickoff": _parse_kickoff(m.get("time", "")),
+                "group": "", "round": "R32", "num": m.get("num"),
+                "city": city, "stadium": stadium,
+                "home": hh, "away": aa, "played": ft,
+                "pred": {"ph": round(ph, 3), "pd": round(pdr, 3), "pa": round(pa, 3),
+                         "score": [int(gi), int(gj)], "xg": [round(float(lh), 2), round(float(la), 2)],
+                         "top": top},
+                "actual": list(actual) if actual else None,
+                "goals": {"home": [], "away": []},
+                "video": "", "thumb": "",
+            }
+            if ft:
+                winner = hh if actual[0] > actual[1] else aa
+                played_winners[m.get("num")] = winner
+            ko_cal.append(entry)
+
+    # Add other KO rounds (R16+) using winner labels from prior, pre-filling known advancers.
+    # Process round-by-round so that when a round's results are in played (daily update),
+    # its winners are inserted into the next round's calendar entries (known team vs "aguardando").
+    def _resolve_winner(label, winners):
+        if label and label.startswith("W"):
+            try:
+                num = int(label[1:])
+                if num in winners:
+                    return winners[num]
+            except Exception:
+                pass
+        return None
+
+    ROUND_ORDER = ["Round of 16", "Quarter-final", "Semi-final", "Final", "Match for third place"]
+    if fpk.exists():
+        all_matches = J.loads(fpk.read_text()).get("matches", [])
+        for rnd in ROUND_ORDER:
+            rnd_matches = [m for m in all_matches if m.get("round") == rnd]
+            for m in rnd_matches:
+                t1 = m.get("team1", "")
+                t2 = m.get("team2", "")
+                hh = _resolve_winner(t1, played_winners)
+                aa = _resolve_winner(t2, played_winners)
+                city, stadium = GROUND_TO_STADIUM.get(m.get("ground", ""), (m.get("ground", ""), ""))
+                # compute real pred only when both participants known (otherwise neutral placeholder)
+                pred = {"ph": 0.5, "pd": 0, "pa": 0.5, "score": [1, 0], "xg": [1.5, 1.5], "top": []}
+                if hh is not None and aa is not None:
+                    hname = next((nm for nm, i in idx.items() if i == hh), None)
+                    aname = next((nm for nm, i in idx.items() if i == aa), None)
+                    if hname and aname:
+                        M = score_matrix_with_venue(model, hname, aname)
+                        _, (gi, gj), (phh, pdd, paa) = favored_scoreline(M)
+                        lh, la = expected_goals_with_venue(model, hname, aname)
+                        flat = M.ravel()
+                        topk = np.argsort(flat)[::-1][:3]
+                        top = [[int(k // M.shape[1]), int(k % M.shape[1]), round(float(flat[k]), 3)] for k in topk]
+                        pred = {"ph": round(phh, 3), "pd": round(pdd, 3), "pa": round(paa, 3),
+                                "score": [int(gi), int(gj)], "xg": [round(float(lh), 2), round(float(la), 2)],
+                                "top": top}
+                entry = {
+                    "date": m.get("date"), "kickoff": _parse_kickoff(m.get("time", "")),
+                    "group": "", "round": rnd, "num": m.get("num"),
+                    "city": city, "stadium": stadium,
+                    "home": hh, "away": aa,
+                    "played": False,
+                    "pred": pred,
+                    "actual": None,
+                    "goals": {"home": [], "away": []},
+                    "video": "", "thumb": "",
+                    "tbd_home": t1 if hh is None else None,
+                    "tbd_away": t2 if aa is None else None,
+                }
+                ko_cal.append(entry)
+            # After adding this round's fixtures, overlay any actual played results for pairs we now know.
+            # If a match finished, record its winner so the *next* round gets pre-filled on this/ future daily exports.
+            for e in [e for e in ko_cal if e.get("round") == rnd]:
+                if e.get("home") is not None and e.get("away") is not None:
+                    act = played_lookup.get((e["home"], e["away"]))
+                    if act:
+                        e["played"] = True
+                        e["actual"] = list(act)
+                        win = e["home"] if act[0] > act[1] else e["away"]
+                        played_winners[e.get("num")] = win
+    # will extend calendar after build
 
     bracket_spec = {
         "r32": r32,
@@ -438,7 +619,6 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
     # o placar exibido é a moda da matriz de placares (argmax) — simétrico por
     # construção, então o mesmo jogo mostra o mesmo placar de qualquer perspectiva.
     import numpy as np
-    from .venue import expected_goals_with_venue, score_matrix_with_venue
     n = len(teams_order)
     lambdas = [[[0.0, 0.0] for _ in range(n)] for _ in range(n)]
     scorelines = [[[0, 0] for _ in range(n)] for _ in range(n)]
@@ -480,6 +660,7 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
 
     # --- calendário da fase de grupos (datas/horas/estádios + previsão por jogo) ---
     calendar = build_calendar(idx, model, played, track_record)
+    calendar.extend(ko_cal)
 
     data = {
         "teams": teams,
@@ -493,6 +674,10 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
         "finalProb": final_prob,
         "semiProb": semi_prob,
         "advProb": adv_prob,
+        "titleProbCI": title_prob_ci,
+        "finalProbCI": final_prob_ci,
+        "semiProbCI": semi_prob_ci,
+        "advProbCI": adv_prob_ci,
         "qualifierIds": qualifier_ids,
         "seeds": seeds,
         "bracketSpec": bracket_spec,
@@ -506,6 +691,8 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
             "playedMatches": int(len(played)),
             "topFavorite": teams[seeds[0]]["en"] if seeds else None,
             "hostAdvantageTeams": sorted(["Canada", "Mexico", "United States"]),
+            "koEnhancements": "r32_venue_explicit + et_pens + ko_var + ci_bands",
+            "ciEnabled": True,
         },
     }
 

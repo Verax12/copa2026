@@ -97,12 +97,17 @@
 
 **Data de criação deste roadmap:** 2026-06-28
 
-## Status Update (2026-06-28)
-- Ponto 1 (Overdispersion): Implemented (dispersion ~1.58, NB in models/sampling/matrix). Positive impact on variance.
-- Ponto 2 (live_form): Completed by parallel subagent. Richer proxy, adaptive, configurable, inspection.
-- Ponto 3,4,5: In progress by parallel subagents (see below).
-- Testing: Round-based validation (up to R2 vs R3) shows ~72.2% WDL accuracy with current improvements (positive, proceed).
-- Parallel agents dispatched for remaining tasks.
+## Status Update (2026-06-29, main)
+- Ponto 1 (Overdispersion): Implemented (dispersion ~1.58, NB).
+- Ponto 2 (live_form): Implemented (richer + adaptive + territory + att/def corr).
+- Ponto 3 (richer ML features): Implemented (form_adj_*, rest_days_*, h2h_gd, elo_x_form, mom_* + interactions; 32 FEATURE_COLS). Active in ML.
+- Ponto 4 (calib/ensemble): Implemented (dynamic w via evaluate_engines + get_optimal, isotonic CalibratedClassifierCV + extra features).
+- Ponto 5 (sim dynamics): Core implemented (fatigue/rest, reds, momentum, chrono groups + KO dates). R32 polish integrated: explicit designated home/venue for R32 (via resolve_r32 + openfootball), ET sampling before pens, ko_var for wider KO variance, return_ci + bands.
+- Data: 73 matches (incl. 1 played R32: SA 0-1 CA).
+- Baselines captured (see tests/baseline_*.txt): prediction_test 59.7% WDL / Brier 0.522 / LL 0.865; round val (R2->R3) 62.5% WDL / Brier 0.4725.
+- Prep complete for any further 3-5 refinements (KO focus). All key tests pass.
+
+R32-specific (finisher integration) completed as part of point 5 before further 3-5 work.
 
 Agents:
 - Point 3: 019f0fc6-efc6-77d3-a948-5d21d8cf83f1 (richer ML features)
