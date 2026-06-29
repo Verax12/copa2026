@@ -51,6 +51,10 @@ def main() -> None:
                          "Requer ter rodado thesportsdb --pull antes.")
     ap.add_argument("--no-calibration", action="store_true",
                     help="desliga a calibração pós-modelo de probabilidades V/E/D")
+    ap.add_argument("--no-dynamics", action="store_true",
+                    help="desliga dinâmicas KO (fadiga/rest/red/momentum) em sims (Point 5/ item1)")
+    ap.add_argument("--ci", action="store_true",
+                    help="retorna intervalos de incerteza (bootstrap approx) nas % de fases")
     ap.add_argument("--path", metavar="SELECAO",
                     help="mostra apenas o caminho fixo da seleção no mata-mata oficial (1º e 2º do grupo) e sai")
     args = ap.parse_args()
@@ -118,8 +122,18 @@ def main() -> None:
     live_str = " + live adjustment" if args.live else ""
     cal_str = "" if args.no_calibration else " + calibração V/E/D"
     print(f"     Config: engine={args.engine}{live_str}{cal_str}, sims={args.sims:,}")
+    dyn = None if args.no_dynamics else {}  # defaults enable fatigue/red/mom configurable
     print(f"4/5  Simulando o torneio {args.sims:,}x (Monte Carlo)...")
-    table = simulate(model, elo, played, n_sims=args.sims, shootout_beta=beta)
+    table = simulate(model, elo, played, n_sims=args.sims, shootout_beta=beta,
+                     dynamics=dyn, return_ci=args.ci)
+
+    # optional direct phase % calibration (task 3)
+    if not args.no_calibration and args.ci:
+        try:
+            from .outcome_calibration import calibrate_phase_probs
+            table = calibrate_phase_probs(table)
+        except Exception:
+            pass
 
     print("5/5  Pronto.\n")
     cal = "calibrado" if not args.no_calibration else "sem calibração"
@@ -129,8 +143,11 @@ def main() -> None:
     top = table.head(15)
     print(f"{'#':>2}  {'Selecao':<24}{'Campeao':>9}{'Final':>8}{'Semi':>8}{'Avanca':>9}{'Elo':>8}")
     for i, (_, r) in enumerate(top.iterrows(), 1):
+        ci_str = ""
+        if "champion_ci_low" in r:
+            ci_str = f" [{r['champion_ci_low']:.1f}-{r['champion_ci_high']:.1f}]"
         print(f"{i:>2}  {r['team']:<24}{r['champion_%']:>8.1f}%{r['finalist_%']:>7.1f}%"
-              f"{r['semifinal_%']:>7.1f}%{r['advance_%']:>8.1f}%{r['elo']:>8.0f}")
+              f"{r['semifinal_%']:>7.1f}%{r['advance_%']:>8.1f}%{r['elo']:>8.0f}{ci_str}")
     print(f"\nConcluido em {time.time() - t0:.1f}s.")
 
 

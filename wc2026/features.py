@@ -79,6 +79,15 @@ def build_features(matches: pd.DataFrame, since: str = "2015-01-01") -> pd.DataF
         form_diff = mean(pts_hist[h]) - mean(pts_hist[a])
         elo_d = (rh + adv) - ra
 
+        # momentum from recent wins (net pts centered; for KO/expected goals effect, task)
+        recent_h = list(pts_hist[h])[-3:] if pts_hist[h] else []
+        recent_a = list(pts_hist[a])[-3:] if pts_hist[a] else []
+        mom_h = sum((p - 1) for p in recent_h) / 2.0 if recent_h else 0.0
+        mom_a = sum((p - 1) for p in recent_a) / 2.0 if recent_a else 0.0
+        mom_h = float(np.clip(mom_h, -2.5, 2.5))
+        mom_a = float(np.clip(mom_a, -2.5, 2.5))
+        mom_diff = mom_h - mom_a
+
         if r.date >= since_ts:
             yr = r.date.year
             rows.append({
@@ -99,6 +108,9 @@ def build_features(matches: pd.DataFrame, since: str = "2015-01-01") -> pd.DataF
                 "form_adj_away": form_adj_a,
                 "form_adj_diff": form_adj_diff,
                 "elo_x_form": elo_d * form_diff,
+                "mom_home": mom_h,
+                "mom_away": mom_a,
+                "mom_diff": mom_diff,
                 "tourn_w": TOURN_WEIGHT.get(r.tournament, 0.4),
                 "off_goals_home": prof(h, yr, "goals"), "off_nscor_home": prof(h, yr, "n_scorers"),
                 "off_topshare_home": prof(h, yr, "top_share"), "off_penrate_home": prof(h, yr, "pen_rate"),
@@ -144,6 +156,7 @@ FEATURE_COLS = [
     "h2h_gd",
     "form_adj_home", "form_adj_away", "form_adj_diff",
     "elo_x_form",
+    "mom_home", "mom_away", "mom_diff",
     "tourn_w",
     "off_goals_home", "off_nscor_home", "off_topshare_home", "off_penrate_home",
     "off_goals_away", "off_nscor_away", "off_topshare_away", "off_penrate_away",
@@ -196,6 +209,7 @@ def current_state(matches: pd.DataFrame) -> dict:
         "adj_form": {t: (float(np.mean(d)) if d else 1.0) for t, d in adj_pts_hist.items()},
         "last_dates": dict(last_dates),
         "h2h": {"|".join(sorted(p)): list(d) for p, d in h2h_hist.items()},
+        "mom": {t: (sum((p-1) for p in list(d)[-3:]) / 2.0 if d else 0.0) for t, d in pts_hist.items()},
         "profiles": yearly_profiles(load_goalscorers()),
     }
 
@@ -260,6 +274,12 @@ def match_row(state: dict, home: str, away: str, neutral: bool = True,
     form_adj_h = adj.get(home, 1.0)
     form_adj_a = adj.get(away, 1.0)
 
+    # momentum from state (recent net form; enables momentum in ML expected goals)
+    raw_mom = state.get("mom", {})
+    mom_h = float(np.clip(raw_mom.get(home, 0.0), -2.5, 2.5))
+    mom_a = float(np.clip(raw_mom.get(away, 0.0), -2.5, 2.5))
+    mom_diff = mom_h - mom_a
+
     row = {
         "neutral": int(neutral),
         "elo_home": eh, "elo_away": ea, "elo_diff": elo_d,
@@ -276,6 +296,9 @@ def match_row(state: dict, home: str, away: str, neutral: bool = True,
         "form_adj_away": form_adj_a,
         "form_adj_diff": form_adj_h - form_adj_a,
         "elo_x_form": elo_d * form_diff,
+        "mom_home": mom_h,
+        "mom_away": mom_a,
+        "mom_diff": mom_diff,
         "tourn_w": 1.0,
         "off_goals_home": prof(home, "goals"), "off_nscor_home": prof(home, "n_scorers"),
         "off_topshare_home": prof(home, "top_share"), "off_penrate_home": prof(home, "pen_rate"),

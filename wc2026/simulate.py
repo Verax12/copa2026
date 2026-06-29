@@ -64,8 +64,14 @@ def _sample(cache, key, rng) -> tuple[int, int]:
 
 def simulate(model, elo: dict[str, float], played: pd.DataFrame,
              n_sims: int = 10000, seed: int = 42, shootout_beta: float = 0.0011,
-             dynamics: dict | None = None) -> pd.DataFrame:
-    """Run full tournament MC sims. dynamics dict enables/configs in-sim dynamics (Point 5)."""
+             dynamics: dict | None = None,
+             return_ci: bool = False) -> pd.DataFrame:
+    """Run full tournament MC sims. dynamics dict enables/configs in-sim dynamics (KO modeling Point).
+    return_ci adds simple bootstrap/ MC error intervals (normal approx) on phase %s.
+    Fatigue uses real rest days from dates (played + simulated schedule); more sophisticated
+    accumulation + short rest; red cards reduce effective goals; momentum from recent wins
+    scales expected goals in sims. Configurable.
+    """
     if dynamics is None:
         dynamics = {}
     # defaults: conservative values for realism without over-effect
@@ -243,6 +249,16 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
         pa = 1.0 / (1.0 + np.exp(-shootout_beta * (elo_of[h] - elo_of[a])))
         return h if rng.random() < pa else a
 
+    def _prop_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+        """Simple uncertainty interval (MC sampling error) for %; approx bootstrap normal."""
+        if n <= 0:
+            return 0.0, 0.0
+        p = k / float(n)
+        se = (p * (1.0 - p) / n) ** 0.5
+        lo = max(0.0, p - z * se)
+        hi = min(1.0, p + z * se)
+        return round(100 * lo, 2), round(100 * hi, 2)
+
     for _ in range(n_sims):
         # per-simulation state for dynamics (Point 5)
         games_played: dict[str, int] = defaultdict(int)
@@ -320,19 +336,35 @@ def simulate(model, elo: dict[str, float], played: pd.DataFrame,
     rows = []
     for t in teams:
         pc = pos_count[t]
-        rows.append({
+        ch_k = champ[t]
+        fi_k = final[t]
+        se_k = semi[t]
+        ad_k = advance[t]
+        row = {
             "team": t,
-            "champion_%": 100 * champ[t] / n_sims,
-            "finalist_%": 100 * final[t] / n_sims,
-            "semifinal_%": 100 * semi[t] / n_sims,
-            "advance_%": 100 * advance[t] / n_sims,
+            "champion_%": 100 * ch_k / n_sims,
+            "finalist_%": 100 * fi_k / n_sims,
+            "semifinal_%": 100 * se_k / n_sims,
+            "advance_%": 100 * ad_k / n_sims,
             "p_first_%": 100 * pc[0] / n_sims,
             "p_second_%": 100 * pc[1] / n_sims,
             "p_third_%": 100 * pc[2] / n_sims,
             "p_fourth_%": 100 * pc[3] / n_sims,
             "exp_pts": pts_sum[t] / n_sims,
             "elo": elo_of[t],
-        })
+        }
+        if return_ci:
+            ch_lo, ch_hi = _prop_ci(ch_k, n_sims)
+            fi_lo, fi_hi = _prop_ci(fi_k, n_sims)
+            se_lo, se_hi = _prop_ci(se_k, n_sims)
+            ad_lo, ad_hi = _prop_ci(ad_k, n_sims)
+            row.update({
+                "champion_ci_low": ch_lo, "champion_ci_high": ch_hi,
+                "finalist_ci_low": fi_lo, "finalist_ci_high": fi_hi,
+                "semifinal_ci_low": se_lo, "semifinal_ci_high": se_hi,
+                "advance_ci_low": ad_lo, "advance_ci_high": ad_hi,
+            })
+        rows.append(row)
     return (pd.DataFrame(rows)
             .sort_values("champion_%", ascending=False)
             .reset_index(drop=True))
