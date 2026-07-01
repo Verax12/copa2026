@@ -436,6 +436,25 @@ select.tsel:focus { outline: none; border-color: var(--red); }
 .mrow.clickable:hover { background: var(--bg); }
 .mrow .res .statschev { font-family: var(--font-cond); font-size: 13px; margin-left: 7px; color: var(--text-muted); vertical-align: 2px; }
 
+/* --- lista de jogos separada: DISPUTADOS (real) × PREVISÃO --- */
+.mlist-sec { margin-bottom: 20px; }
+.mlist-sec:last-child { margin-bottom: 0; }
+.mlist-sechd { display: flex; align-items: center; gap: 9px; margin: 2px 2px 11px;
+  font-family: var(--font-cond); text-transform: uppercase; letter-spacing: 1px; font-size: 12px; font-weight: 700; }
+.mlist-sechd b { font-weight: 800; }
+.mlist-sechd .secdot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.mlist-sechd.real .secdot { background: var(--teal); box-shadow: 0 0 0 3px var(--teal-light); }
+.mlist-sechd.real b { color: var(--teal-dark); }
+.mlist-sechd.pred .secdot { background: transparent; border: 2px dashed var(--orange); }
+.mlist-sechd.pred b { color: var(--orange); }
+.mlist-sechd .cnt { background: var(--bg); border-radius: 20px; padding: 1px 10px; font-size: 11px; color: var(--text-2); font-weight: 800; }
+.mlist-sechd .hint { text-transform: none; letter-spacing: .2px; font-weight: 600; font-size: 11px; color: var(--text-muted); }
+/* linha de resultado real: acento sólido teal; linha de previsão: tracejado laranja */
+.mrow.is-real { border-left: 4px solid var(--teal); }
+.mrow.is-pred { border-left: 4px dashed var(--orange); }
+.mrow.is-pred .res { font-style: italic; }
+.mrow .ph .tagm.pred { color: var(--orange); opacity: .95; }
+
 /* painel de microestatísticas do jogo */
 .matchstats { margin-top: 6px; padding: 14px 16px 12px; }
 .ms-hd { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px;
@@ -764,6 +783,21 @@ select.tsel:focus { outline: none; border-color: var(--red); }
 .fbr-flag.win { border-color: var(--lime); box-shadow: 0 0 0 1px var(--lime), 0 3px 10px rgba(168,212,0,.25); }
 .fbr-flag.lose { opacity: .42; }
 .fbr-flag:focus-visible { outline: 3px solid var(--lime); outline-offset: 2px; }
+
+/* confronto JÁ DISPUTADO: resultado real, travado (verde-água em vez do lima do "e se?") */
+.fbr-tie.played { background: rgba(0,155,140,.10); box-shadow: inset 0 0 0 1px rgba(0,155,140,.5); }
+.fbr-flag { position: relative; }
+.fbr-flag.real { cursor: default; }
+.fbr-flag.real:hover { transform: none; border-color: #2e2e2e; }
+.fbr-flag.win.real { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal), 0 3px 10px rgba(0,155,140,.3); }
+.fbr-flag.win.real:hover { border-color: var(--teal); }
+.fbr-adv { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--teal); color: #fff; font-size: 11px; line-height: 18px; text-align: center; font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0,0,0,.45); }
+.fbr-half.right .fbr-adv { right: auto; left: -6px; }
+.fbr-ft { align-self: center; font-family: var(--font-display); font-size: 13px; letter-spacing: .5px;
+  color: var(--teal-dark); background: var(--teal-light); border-radius: 6px; padding: 1px 9px; margin-top: 2px; }
+.datanote.ko-real-note { border-left: 4px solid var(--teal); }
 
 /* centro: campeã + final + disputa de 3º */
 .fbr-center { display: flex; flex-direction: column; align-items: center; justify-content: center;

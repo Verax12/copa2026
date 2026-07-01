@@ -392,13 +392,27 @@ const ROUND_NAMES = {
 };
 const PREV_ROUND = { F: "SF", SF: "QF", QF: "R16", R16: "R32" };
 
-/* tile de uma seleção (só a bandeira, estilo pôster FIFA), clicável p/ "e se?".
-   vencedor destacado, perdedor esmaecido; o nome aparece no tooltip. */
-function TeamTile({ id, win, onClick, label, lang }) {
+/* tile de uma seleção (só a bandeira, estilo pôster FIFA).
+   - jogo POR JOGAR: clicável p/ "e se?"; vencedor previsto destacado (lima).
+   - jogo JÁ DISPUTADO (`played`): resultado real, NÃO clicável; quem avançou
+     ganha borda verde-água + "✔", quem caiu fica esmaecido. */
+function TeamTile({ id, win, played, onClick, label, lang }) {
+  const pt = lang === "pt";
+  const cls = "fbr-flag" + (win ? " win" : " lose") + (played ? " real" : "");
+  if (played) {
+    return (
+      <span className={cls}
+            title={label + (win ? (pt ? " — avançou (resultado real)" : " — advanced (real result)")
+                                : (pt ? " — eliminada (resultado real)" : " — eliminated (real result)"))}>
+        <Flag id={id} w={56} />
+        {win && <span className="fbr-adv" aria-hidden="true">✔</span>}
+      </span>
+    );
+  }
   return (
-    <span className={"fbr-flag" + (win ? " win" : " lose")}
+    <span className={cls}
           {...clickable(onClick, label)}
-          title={(lang === "pt" ? "Fazer " : "Make ") + label + (lang === "pt" ? " vencer" : " win")}>
+          title={(pt ? "Fazer " : "Make ") + label + (pt ? " vencer" : " win")}>
       <Flag id={id} w={56} />
     </span>
   );
@@ -431,13 +445,17 @@ function BracketView({ lang, openPair }) {
     return null;
   }
 
-  // um confronto = duas bandeiras empilhadas (vencedor destacado)
+  // um confronto = duas bandeiras empilhadas (vencedor destacado).
+  // jogos já disputados aparecem travados (classe .played) com o placar real.
   function tie(m) {
+    const cls = "fbr-tie" + (m.played ? " played" : (overrides[m.id] != null ? " edited" : ""));
+    const scoreTxt = m.score[0] + "–" + m.score[1] + (m.shootout ? (pt ? " (pên.)" : " (pens)") : "");
     return (
-      <span className={"fbr-tie" + (overrides[m.id] != null ? " edited" : "")}
-            title={WC.name(m.a, lang) + " " + m.score[0] + "–" + m.score[1] + " " + WC.name(m.b, lang)}>
-        <TeamTile id={m.a} win={m.winner === m.a} onClick={() => toggle(m, m.a)} label={WC.name(m.a, lang)} lang={lang} />
-        <TeamTile id={m.b} win={m.winner === m.b} onClick={() => toggle(m, m.b)} label={WC.name(m.b, lang)} lang={lang} />
+      <span className={cls}
+            title={WC.name(m.a, lang) + " " + scoreTxt + " " + WC.name(m.b, lang) + (m.played ? (pt ? " · resultado real" : " · real result") : "")}>
+        <TeamTile id={m.a} win={m.winner === m.a} played={m.played} onClick={() => toggle(m, m.a)} label={WC.name(m.a, lang)} lang={lang} />
+        <TeamTile id={m.b} win={m.winner === m.b} played={m.played} onClick={() => toggle(m, m.b)} label={WC.name(m.b, lang)} lang={lang} />
+        {m.played && <span className="fbr-ft" title={pt ? "Placar real" : "Real score"}>{scoreTxt}</span>}
       </span>
     );
   }
@@ -458,6 +476,8 @@ function BracketView({ lang, openPair }) {
     );
   }
 
+  // há algum confronto já disputado (travado com resultado real)?
+  const hasReal = D.ROUND_KEYS.some(rk => bracket.rounds[rk].some(m => m.played));
   const champId = bracket.champion;
   const F = bracket.rounds.F[0];
   const sf0 = bracket.rounds.SF[0], sf1 = bracket.rounds.SF[1];
@@ -471,6 +491,14 @@ function BracketView({ lang, openPair }) {
         <div className="tx"><b>{T.simTitle}: </b>{T.simBody}</div>
         <button className="btn" onClick={() => setOverrides({})} disabled={!hasEdits} style={{ marginLeft: "auto" }}>{T.reset}</button>
       </div>
+
+      {hasReal && (
+        <div className="datanote ko-real-note">
+          <span>✔</span>
+          <span>{pt ? "Os jogos já disputados entram travados com o resultado real (destacados em verde-água). O simulador “e se?” só altera os confrontos ainda por jogar."
+                    : "Games already played are locked to their real result (highlighted in teal). The “what if?” simulator only changes upcoming ties."}</span>
+        </div>
+      )}
 
       {hasEdits && (
         <div className="datanote sim-active">

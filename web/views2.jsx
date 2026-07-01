@@ -16,6 +16,10 @@ function TeamView({ lang, initId, openPair, onTeamRoute }) {
   // hooks dependentes da seleção — SEMPRE chamados (regras de hooks),
   // com guarda interna para quando nenhuma seleção está escolhida.
   const groupMatches = useMemo(() => id == null ? [] : D.groupMatchesFor(id), [id]);
+  // todos os confrontos de mata-mata em que a seleção aparece = exatamente as
+  // rodadas que ela ALCANÇA (o bracket só a coloca numa rodada se venceu a
+  // anterior). O último é onde ela cai — ou a final, se for campeã. Jogos já
+  // disputados vêm com `played` e placar real (via D.buildBracket).
   const koMatches = useMemo(() => {
     if (id == null) return [];
     const ms = [];
@@ -24,14 +28,8 @@ function TeamView({ lang, initId, openPair, onTeamRoute }) {
         if (m.a === id || m.b === id) ms.push({ ...m, rk });
       });
     });
-    const finishOrder = ["R32","R16","QF","SF","F","CHAMP"];
-    const fk = finish[id];
-    return ms.filter(m => {
-      const mIdx = finishOrder.indexOf(m.rk);
-      const fIdx = finishOrder.indexOf(fk === "CHAMP" ? "CHAMP" : fk);
-      return mIdx < fIdx || m.winner === id || fk === "CHAMP";
-    });
-  }, [id, finish]);
+    return ms;
+  }, [id]);
 
   if (id == null) {
     const filtered = sortedTeams.filter(t =>
@@ -65,6 +63,7 @@ function TeamView({ lang, initId, openPair, onTeamRoute }) {
     );
   }
 
+  const pt      = lang === "pt";
   const team    = D.byId(id);
   const groupObj = D.groups[team.groupId];
   const grpRow  = groupObj.table.find(r => r.id === id);
@@ -151,47 +150,96 @@ function TeamView({ lang, initId, openPair, onTeamRoute }) {
         </div>
       </div>
 
-      {/* Matches — clicáveis abrem o modal de detalhe */}
-      <div className="card" style={{ padding: "18px 20px" }}>
-        <div className="eyebrow" style={{ marginBottom: "14px" }}>{T.journeyMatches}</div>
-        <div className="mlist">
-          {groupMatches.map((m, i) => {
-            const res = m.gf > m.ga ? "w" : m.gf < m.ga ? "l" : "d";
-            const tag = m.played ? (lang === "pt" ? "Resultado" : "Result") : (lang === "pt" ? "Previsto" : "Predicted");
-            const canOpen = !!D.calendarEntry(id, m.opp);
-            return (
-              <div key={"g" + i} className={"mrow card" + (canOpen ? " clickable" : "")}
-                   {...(canOpen ? clickable(() => openPair(id, m.opp), (lang === "pt" ? "Ver detalhes do jogo" : "See match details")) : {})}
-                   title={canOpen ? (lang === "pt" ? "Ver detalhes do jogo" : "See match details") : ""}>
-                <span className="ph">
-                  {lang === "pt" ? "Grupos" : "Groups"} · {groupObj.label}
-                  {m.date && <span className="whenm">{m.date}{m.time ? " · " + m.time : ""}</span>}
-                  <span className={"tagm" + (m.played ? " real" : "")}>{m.played ? "● " : ""}{tag}</span>
-                </span>
-                <div className="vs">
-                  <TeamChip id={id} lang={lang} /><span className="sep">vs</span><TeamChip id={m.opp} lang={lang} />
-                </div>
-                <div className={"res " + res}>{m.gf}–{m.ga}{canOpen && <span className="statschev">›</span>}</div>
-              </div>
-            );
-          })}
-          {koMatches.map((m, i) => {
+      {/* Matches — separados em DISPUTADOS (resultado real) e PREVISÃO, para
+          deixar claro o que já aconteceu vs. o que o modelo estima. */}
+      {(() => {
+        // modelo comum de linha para grupos e mata-mata
+        const rows = [
+          ...groupMatches.map(m => ({
+            kind: "group",
+            phase: (pt ? "Grupos" : "Groups") + " · " + groupObj.label,
+            opp: m.opp, gf: m.gf, ga: m.ga, played: !!m.played,
+            date: m.date, time: m.time,
+            res: m.gf > m.ga ? "w" : m.gf < m.ga ? "l" : "d",
+            shootout: false,
+          })),
+          ...koMatches.map(m => {
             const isA = m.a === id;
-            const gf = isA ? m.score[0] : m.score[1];
-            const ga = isA ? m.score[1] : m.score[0];
-            const opp = isA ? m.b : m.a;
-            const res = m.winner === id ? "w" : "l";
-            const rkLabel = D.ROUND_SHORT[m.rk] ? D.ROUND_SHORT[m.rk][lang] : m.rk;
-            return (
-              <div key={"k" + i} className="mrow card" style={{ marginBottom: "8px" }}>
-                <span className="ph">{rkLabel}<span className="tagm">{lang === "pt" ? "Previsto" : "Predicted"}</span></span>
-                <div className="vs"><TeamChip id={id} lang={lang} /><span className="sep">vs</span><TeamChip id={opp} lang={lang} /></div>
-                <div className={"res " + res}>{gf}–{ga}</div>
+            return {
+              kind: "ko",
+              phase: D.ROUND_SHORT[m.rk] ? D.ROUND_SHORT[m.rk][lang] : m.rk,
+              opp: isA ? m.b : m.a,
+              gf: isA ? m.score[0] : m.score[1],
+              ga: isA ? m.score[1] : m.score[0],
+              played: !!m.played,
+              date: "", time: "",
+              res: m.winner === id ? "w" : "l",   // no mata-mata a cor segue o avanço
+              shootout: !!m.shootout,
+            };
+          }),
+        ];
+        const playedRows = rows.filter(r => r.played);
+        const predRows = rows.filter(r => !r.played);
+
+        const matchRow = (r, i) => {
+          const canOpen = !!D.calendarEntry(id, r.opp);
+          return (
+            <div key={r.kind + "-" + i} className={"mrow card " + (r.played ? "is-real" : "is-pred") + (canOpen ? " clickable" : "")}
+                 {...(canOpen ? clickable(() => openPair(id, r.opp), (pt ? "Ver detalhes do jogo" : "See match details")) : {})}
+                 title={canOpen ? (pt ? "Ver detalhes do jogo" : "See match details") : ""}>
+              <span className="ph">
+                {r.phase}
+                {r.date && <span className="whenm">{r.date}{r.time ? " · " + r.time : ""}</span>}
+                <span className={"tagm " + (r.played ? "real" : "pred")}>
+                  {r.played ? (pt ? "● Resultado" : "● Result") : (pt ? "◇ Previsão" : "◇ Prediction")}
+                  {r.shootout ? (pt ? " · pên." : " · pens") : ""}
+                </span>
+              </span>
+              <div className="vs">
+                <TeamChip id={id} lang={lang} /><span className="sep">{r.played ? "×" : "vs"}</span><TeamChip id={r.opp} lang={lang} />
               </div>
-            );
-          })}
-        </div>
-      </div>
+              <div className={"res " + r.res}>{r.gf}–{r.ga}{canOpen && <span className="statschev">›</span>}</div>
+            </div>
+          );
+        };
+
+        return (
+          <div className="card" style={{ padding: "18px 20px" }}>
+            <div className="eyebrow" style={{ marginBottom: "14px" }}>{T.journeyMatches}</div>
+
+            {playedRows.length > 0 && (
+              <div className="mlist-sec">
+                <div className="mlist-sechd real">
+                  <span className="secdot" />
+                  <b>{pt ? "Jogos disputados" : "Played games"}</b>
+                  <span className="cnt">{playedRows.length}</span>
+                  <span className="hint">{pt ? "resultados reais" : "real results"}</span>
+                </div>
+                <div className="mlist">{playedRows.map(matchRow)}</div>
+              </div>
+            )}
+
+            {predRows.length > 0 && (
+              <div className="mlist-sec">
+                <div className="mlist-sechd pred">
+                  <span className="secdot" />
+                  <b>{pt ? "Previsão da campanha" : "Campaign prediction"}</b>
+                  <span className="cnt">{predRows.length}</span>
+                  <span className="hint">{pt ? "placares estimados pelo modelo" : "model-estimated scores"}</span>
+                </div>
+                <div className="mlist">{predRows.map(matchRow)}</div>
+              </div>
+            )}
+
+            {!predRows.length && (
+              <div className="datanote" style={{ marginTop: playedRows.length ? "12px" : 0 }}>
+                <span>🏁</span>
+                <span>{pt ? "Campanha encerrada — a seleção foi eliminada nos jogos acima." : "Campaign over — the team was eliminated in the games above."}</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -92,6 +92,69 @@
     return { winner, score: [ga, gb] };
   }
 
+  // ---- resultados REAIS do mata-mata (jogos já disputados) -----------
+  // O bracket é fixo (estrutura FIFA), mas os VENCEDORES dos jogos já jogados
+  // são fatos, não previsão. Aqui montamos, a partir do calendário, o resultado
+  // real de cada confronto do mata-mata para "travar" no bracket os times que já
+  // avançaram — e assim cascatear os confrontos reais para as rodadas seguintes.
+  const KO_ROUND_KEY = {
+    "R32": "R32", "Round of 16": "R16", "Quarter-final": "QF",
+    "Semi-final": "SF", "Final": "F", "Match for third place": "F3",
+  };
+  const NEXT_KO_ROUND = { R32: "R16", R16: "QF", QF: "SF", SF: "F", F: null };
+
+  // resolve o id da seleção de um lado de um jogo do calendário: id direto quando
+  // já conhecido, ou o nome quando o calendário já trouxe o avanço por extenso
+  // (ex.: "Paraguay"); rótulos de vaga ainda em aberto ("W80") ficam sem id.
+  function koSideId(entry, side) {
+    const direct = side === "home" ? entry.home : entry.away;
+    if (direct != null) return direct;
+    const tbd = side === "home" ? entry.tbd_home : entry.tbd_away;
+    if (tbd) { const rid = teamFromKey(tbd); if (rid != null) return rid; }
+    return null;
+  }
+
+  // koResultByPair["a-b"] = { home, away, actual, round } para jogos JÁ disputados.
+  // koRoundTeams[rk] = conjunto de ids que aparecem naquela rodada (usado para
+  // descobrir quem avançou quando o tempo normal terminou empatado → pênaltis).
+  const koResultByPair = {};
+  const koRoundTeams = { R32: new Set(), R16: new Set(), QF: new Set(), SF: new Set(), F: new Set(), F3: new Set() };
+  (WD.calendar || []).forEach(c => {
+    if (!c.round) return;
+    const rk = KO_ROUND_KEY[c.round];
+    const h = koSideId(c, "home"), a = koSideId(c, "away");
+    if (rk && koRoundTeams[rk]) {
+      if (h != null) koRoundTeams[rk].add(h);
+      if (a != null) koRoundTeams[rk].add(a);
+    }
+    if (c.played && c.actual && h != null && a != null) {
+      const rec = { home: h, away: a, actual: c.actual, round: rk };
+      koResultByPair[h + "-" + a] = rec;
+      koResultByPair[a + "-" + h] = rec;
+    }
+  });
+
+  // resultado real de um confronto (aId,bId) na rodada rk, orientado para (a,b).
+  // devolve null se o jogo ainda não aconteceu (ou não deu para determinar).
+  function realKoResult(aId, bId, rk) {
+    if (aId == null || bId == null) return null;
+    const rec = koResultByPair[aId + "-" + bId];
+    if (!rec) return null;
+    const ga = rec.home === aId ? rec.actual[0] : rec.actual[1];
+    const gb = rec.home === aId ? rec.actual[1] : rec.actual[0];
+    let winner;
+    if (ga !== gb) {
+      winner = ga > gb ? aId : bId;                 // vitória no tempo normal
+    } else {
+      // empate → decidido nos pênaltis: quem avançou é quem aparece na próxima rodada
+      const nextSet = koRoundTeams[NEXT_KO_ROUND[rk]];
+      if (nextSet && nextSet.has(aId) && !nextSet.has(bId)) winner = aId;
+      else if (nextSet && nextSet.has(bId) && !nextSet.has(aId)) winner = bId;
+      else winner = null;                           // indeterminado → cai na previsão
+    }
+    return { winner, score: [ga, gb], shootout: ga === gb };
+  }
+
   // ---- bracket OFICIAL (estrutura fixa da FIFA) + "e se?" ------------
   const ROUND_KEYS = ["R32", "R16", "QF", "SF", "F"];
   function buildBracket(overrides) {
@@ -100,8 +163,14 @@
     const mk = (aId, bId, rk, i) => {
       const id = rk + "-" + i;
       const sim = simWinner(aId, bId, id);
+      // jogo JÁ disputado → trava o vencedor e o placar reais (ignora o "e se?")
+      const real = realKoResult(aId, bId, rk);
+      if (real && real.winner != null) {
+        return { id, round: rk, idx: i, a: aId, b: bId, score: real.score,
+                 winner: real.winner, def: real.winner, played: true, shootout: real.shootout };
+      }
       const winner = overrides[id] != null ? overrides[id] : sim.winner;
-      return { id, round: rk, idx: i, a: aId, b: bId, score: sim.score, winner, def: sim.winner };
+      return { id, round: rk, idx: i, a: aId, b: bId, score: sim.score, winner, def: sim.winner, played: false };
     };
     const rounds = {};
     rounds.R32 = spec.r32.map((p, i) => mk(p[0], p[1], "R32", i));
