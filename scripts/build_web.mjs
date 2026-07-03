@@ -7,11 +7,16 @@
 import esbuild from "esbuild";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WEB = path.join(ROOT, "web");
 const read = (f) => fs.readFileSync(path.join(WEB, f), "utf8");
+
+// versão do CSS = hash do conteúdo → o <link> só busta o cache quando o CSS muda
+// (sem cache-bust, o navegador serviria styles.css antigo com o app.js novo).
+const cssVer = crypto.createHash("md5").update(read("styles.css")).digest("hex").slice(0, 8);
 
 // 1) fontes do app (mesma ordem do index.dev.html)
 const parts = ["ui.jsx", "views1.jsx", "views2.jsx", "views3.jsx"].map(read);
@@ -51,7 +56,7 @@ const prod = `<!DOCTYPE html>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Semi+Condensed:wght@400;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=${cssVer}" />
 </head>
 <body>
   <!-- PRODUÇÃO: gerado por scripts/build_web.mjs (NÃO editar à mão; edite os .jsx

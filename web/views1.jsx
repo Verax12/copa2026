@@ -7,6 +7,40 @@ const THERMO_COLORS = [
   "#E8571A","#009B8C","#3D1466","#004D42"
 ];
 
+/* ---------- EXPORTS (baixar previsões em CSV/JSON) ---------- */
+function downloadFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime || "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function exportChampionCSV(lang) {
+  const header = "team,prob_pct\n";
+  const rows = D.teams
+    .map(t => ({ name: WC.name(t.id, lang).replace(/,/g, " "), p: D.titleProb[t.id] }))
+    .sort((a, b) => b.p - a.p)
+    .map(r => `${r.name},${r.p.toFixed(2)}`).join("\n");
+  downloadFile("copa2026_campeao.csv", header + rows, "text/csv");
+}
+function exportGroupsCSV(lang) {
+  let csv = "group,team,pos,adv_pct\n";
+  (D.groups || []).forEach(g => {
+    g.table.forEach((row, i) => {
+      const nm = WC.name(row.id, lang).replace(/,/g, " ");
+      csv += `${g.label},${nm},${i + 1},${row.adv}\n`;
+    });
+  });
+  downloadFile("copa2026_grupos_avanco.csv", csv, "text/csv");
+}
+function exportBracketJSON(lang) {
+  const br = D.buildBracket({});
+  downloadFile("copa2026_bracket.json",
+    JSON.stringify({ champion: br.champion, championName: WC.name(br.champion, lang), rounds: br.rounds }, null, 2),
+    "application/json");
+}
+
 /* ---------- VISÃO GERAL ---------- */
 
 /* Pódio do topo: campeã prevista em destaque + vice e 3º */
@@ -19,7 +53,7 @@ function ChampionHero({ lang, onPick }) {
   const champP = D.titleProb[champId];
 
   return (
-    <div className="champ-banner card card-accent">
+    <div className="champ-banner card card-accent vibrant-wc">
       <div className="cb-strip">
         {["#D41515","#E8571A","#E8A000","#7B35B0","#009B8C","#A8D400","#D41515","#7B35B0","#E8571A","#009B8C"].map((c, i) => (
           <div key={i} style={{ flex: 1, background: c }} />
@@ -59,36 +93,49 @@ function ChampionHero({ lang, onPick }) {
   );
 }
 
-/* Termômetro — agora abaixo do campeão, em largura total */
-function Thermometer({ lang, onPick }) {
+/* Termômetro — campeão em largura total, com faixa de incerteza (intervalo de
+   confiança das simulações) atrás de cada barra e busca por seleção. */
+function Thermometer({ lang, onPick, searchTerm }) {
   const T = I18N[lang];
-  const ranked = useMemo(() =>
+  const pt = lang === "pt";
+  const q = (searchTerm || "").toLowerCase().trim();
+  const full = useMemo(() =>
     D.teams.map(t => ({ id: t.id, p: D.titleProb[t.id] }))
       .sort((a, b) => b.p - a.p).slice(0, 12), []);
-  const max = ranked[0].p || 1;
+  const ranked = q ? full.filter(r => WC.name(r.id, lang).toLowerCase().includes(q)) : full;
+  const max = (ranked[0] && ranked[0].p) || (full[0] && full[0].p) || 1;
+  const CI = D.titleProbCI || null;
 
   return (
-    <div className="thermo card card-accent-black">
+    <div className="thermo card card-accent-black vibrant-wc">
       <div className="thermo-hd">
         <span className="t">{T.thermoTitle}</span>
-        <span className="pill">{T.thermoSub}</span>
+        <span className="pill" title={pt ? "A faixa clara em cada barra é o intervalo de confiança (incerteza) das 200k simulações" : "The light band on each bar is the confidence interval (uncertainty) from 200k sims"}>
+          {CI ? (pt ? "Top 12 · com incerteza ±" : "Top 12 · with ± uncertainty") : T.thermoSub}
+        </span>
       </div>
       <div className="thermo-grid">
-        {ranked.map((r, i) => (
-          <div className="thermo-row" key={r.id} {...clickable(() => onPick(r.id), WC.name(r.id, lang))}>
-            <span className={"rk" + (i < 3 ? " top" : "")}>{i + 1}</span>
-            <Flag id={r.id} w={40} />
-            <div className="thermo-stack">
-              <span className="nm">{WC.name(r.id, lang)}</span>
-              <span className="thermo-bar">
-                <i style={{ width: (r.p / max * 100) + "%", background: THERMO_COLORS[i] }} />
+        {ranked.map((r, i) => {
+          const ci = CI && CI[r.id];
+          const lo = ci ? Math.max(0, ci[0]) : null, hi = ci ? ci[1] : null;
+          return (
+            <div className="thermo-row" key={r.id} {...clickable(() => onPick(r.id), WC.name(r.id, lang))}>
+              <span className={"rk" + (i < 3 ? " top" : "")}>{i + 1}</span>
+              <Flag id={r.id} w={40} />
+              <div className="thermo-stack">
+                <span className="nm">{WC.name(r.id, lang)}</span>
+                <span className="thermo-bar" title={ci ? (pt ? "Intervalo de confiança: " : "Confidence interval: ") + lo.toFixed(1) + "–" + hi.toFixed(1) + "%" : ""}>
+                  {ci && <i className="thermo-ci" style={{ left: (lo / max * 100) + "%", width: (Math.max(0, hi - lo) / max * 100) + "%" }} />}
+                  <i className="thermo-fill" style={{ width: (r.p / max * 100) + "%", background: THERMO_COLORS[i] }} />
+                </span>
+              </div>
+              <span className="pc" style={{ color: THERMO_COLORS[i] }}>
+                {r.p.toFixed(1)}<span style={{ fontSize: "11px", color: "var(--text-muted)" }}>%</span>
               </span>
             </div>
-            <span className="pc" style={{ color: THERMO_COLORS[i] }}>
-              {r.p.toFixed(1)}<span style={{ fontSize: "11px", color: "var(--text-muted)" }}>%</span>
-            </span>
-          </div>
-        ))}
+          );
+        })}
+        {q && !ranked.length && <div className="why-empty" style={{ padding: "8px 4px", color: "var(--text-muted)" }}>{pt ? "Nenhum time no top-12 corresponde à busca." : "No top-12 team matches the search."}</div>}
       </div>
     </div>
   );
@@ -167,7 +214,7 @@ function TrackRecord({ lang, openPair }) {
   }
 
   return (
-    <div className="card card-accent-teal model-perf">
+    <div className="card card-accent-teal model-perf vibrant-wc">
       <div className="mp-head">
         <div>
           <div className="eyebrow" style={{ color: "var(--teal)" }}>{pt ? "Desempenho do modelo" : "Model performance"}</div>
@@ -325,11 +372,18 @@ function TrackRecord({ lang, openPair }) {
   );
 }
 
-function HeroView({ lang, onPick, openPair }) {
+function HeroView({ lang, onPick, openPair, searchTerm }) {
+  const T = I18N[lang];
   return (
-    <div className="fade-in">
+    <div className="fade-in wc-pattern">
       <ChampionHero lang={lang} onPick={onPick} />
-      <Thermometer lang={lang} onPick={onPick} />
+      <Thermometer lang={lang} onPick={onPick} searchTerm={searchTerm} />
+      <div className="export-bar">
+        <span className="export-lbl">{lang === "pt" ? "Baixar dados:" : "Download data:"}</span>
+        <button className="btn" onClick={() => exportChampionCSV(lang)}>📥 {T.exportChamp}</button>
+        <button className="btn" onClick={() => exportGroupsCSV(lang)}>📥 {T.exportGroups}</button>
+        <button className="btn" onClick={() => exportBracketJSON(lang)}>📥 {T.exportBracket}</button>
+      </div>
       <TrackRecord lang={lang} openPair={openPair} />
     </div>
   );
@@ -354,21 +408,27 @@ function GroupCard({ group, lang, onPick }) {
           <Flag id={row.id} w={36} />
           <span className="nm">{WC.name(row.id, lang)}</span>
           <span className="qbadge">{Q_LABEL[i]}</span>
-          <span className="adv">{row.adv}<span>%</span></span>
+          <span className="adv" title={lang === "pt" ? "Probabilidade de avançar do grupo (200k simulações)" : "Probability of advancing from the group (200k sims)"}>{row.adv}<span>%</span></span>
         </div>
       ))}
     </div>
   );
 }
 
-function GroupsView({ lang, onTeamPick }) {
+function GroupsView({ lang, onTeamPick, searchTerm }) {
   const T = I18N[lang];
+  const pt = lang === "pt";
+  const q = (searchTerm || "").toLowerCase().trim();
+  const filtered = q ? D.groups
+    .map(g => { const rows = g.table.filter(r => WC.name(r.id, lang).toLowerCase().includes(q)); return rows.length ? { ...g, table: rows } : null; })
+    .filter(Boolean) : D.groups;
   return (
     <div className="fade-in">
       <div className="stages-subhead">
         <div>
           <div className="eyebrow">{T.groups}</div>
           <p className="stages-desc">{T.groupsSub}</p>
+          <small className="pct-explain" title={pt ? "avanço % = prob. simulada de passar da fase de grupos (top 2 + 8 melhores 3ºs); Monte Carlo 200k sims, motor ensemble." : "advance % = simulated probability of getting out of the group (top 2 + 8 best 3rd places); 200k Monte Carlo sims, ensemble engine."}>ℹ️ {pt ? "o que significam as %?" : "what do the % mean?"}</small>
         </div>
         <div className="legend-bar">
           <span><i style={{ background: "var(--red)" }}></i>{T.first}/{T.second}</span>
@@ -377,10 +437,11 @@ function GroupsView({ lang, onTeamPick }) {
         </div>
       </div>
       <div className="groups-grid">
-        {D.groups.map(g => (
+        {filtered.map(g => (
           <GroupCard key={g.id} group={g} lang={lang} onPick={onTeamPick} />
         ))}
       </div>
+      {q && !filtered.length && <div className="why-empty" style={{ color: "var(--text-muted)", padding: "12px" }}>{pt ? "Nenhum time corresponde à busca." : "No team matches the search."}</div>}
     </div>
   );
 }
@@ -396,9 +457,9 @@ const PREV_ROUND = { F: "SF", SF: "QF", QF: "R16", R16: "R32" };
    - jogo POR JOGAR: clicável p/ "e se?"; vencedor previsto destacado (lima).
    - jogo JÁ DISPUTADO (`played`): resultado real, NÃO clicável; quem avançou
      ganha borda verde-água + "✔", quem caiu fica esmaecido. */
-function TeamTile({ id, win, played, onClick, label, lang }) {
+function TeamTile({ id, win, played, onClick, label, lang, dim }) {
   const pt = lang === "pt";
-  const cls = "fbr-flag" + (win ? " win" : " lose") + (played ? " real" : "");
+  const cls = "fbr-flag" + (win ? " win" : " lose") + (played ? " real" : "") + (dim ? " dim" : "");
   if (played) {
     return (
       <span className={cls}
@@ -418,9 +479,11 @@ function TeamTile({ id, win, played, onClick, label, lang }) {
   );
 }
 
-function BracketView({ lang, openPair }) {
+function BracketView({ lang, openPair, searchTerm }) {
   const T = I18N[lang];
   const pt = lang === "pt";
+  const q = (searchTerm || "").toLowerCase().trim();
+  const dimOf = (id) => q && id != null && !WC.name(id, lang).toLowerCase().includes(q);
   const [overrides, setOverrides] = useState({});
   const bracket = useMemo(() => D.buildBracket(overrides), [overrides]);
   const spec = D.bracketSpec;
@@ -453,8 +516,8 @@ function BracketView({ lang, openPair }) {
     return (
       <span className={cls}
             title={WC.name(m.a, lang) + " " + scoreTxt + " " + WC.name(m.b, lang) + (m.played ? (pt ? " · resultado real" : " · real result") : "")}>
-        <TeamTile id={m.a} win={m.winner === m.a} played={m.played} onClick={() => toggle(m, m.a)} label={WC.name(m.a, lang)} lang={lang} />
-        <TeamTile id={m.b} win={m.winner === m.b} played={m.played} onClick={() => toggle(m, m.b)} label={WC.name(m.b, lang)} lang={lang} />
+        <TeamTile id={m.a} win={m.winner === m.a} played={m.played} onClick={() => toggle(m, m.a)} label={WC.name(m.a, lang)} lang={lang} dim={dimOf(m.a)} />
+        <TeamTile id={m.b} win={m.winner === m.b} played={m.played} onClick={() => toggle(m, m.b)} label={WC.name(m.b, lang)} lang={lang} dim={dimOf(m.b)} />
         {m.played && <span className="fbr-ft" title={pt ? "Placar real" : "Real score"}>{scoreTxt}</span>}
       </span>
     );
@@ -555,7 +618,7 @@ function BracketView({ lang, openPair }) {
 }
 
 /* ---------- ETAPAS WRAPPER ---------- */
-function StagesView({ lang, onTeamPick, openPair, initialSub }) {
+function StagesView({ lang, onTeamPick, openPair, initialSub, searchTerm }) {
   const T = I18N[lang];
   const [sub, setSub] = useState(() => {
     if (initialSub === "bracket" || initialSub === "groups") {
@@ -580,8 +643,8 @@ function StagesView({ lang, onTeamPick, openPair, initialSub }) {
           🗂 {T.knockout}
         </button>
       </div>
-      {sub === "groups"  && <GroupsView lang={lang} onTeamPick={onTeamPick} />}
-      {sub === "bracket" && <BracketView lang={lang} openPair={openPair} />}
+      {sub === "groups"  && <GroupsView lang={lang} onTeamPick={onTeamPick} searchTerm={searchTerm} />}
+      {sub === "bracket" && <BracketView lang={lang} openPair={openPair} searchTerm={searchTerm} />}
     </div>
   );
 }

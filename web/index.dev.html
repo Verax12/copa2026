@@ -88,6 +88,7 @@
       const [compareRoute, setCompareRoute] = React.useState(initialRoute.compare);
       const [calendarRoute, setCalendarRoute] = React.useState(initialRoute.calendar || {});
       const [modalEntry, setModalEntry] = React.useState(initialRoute.match);
+      const [searchTerm, setSearchTerm] = React.useState("");
       const lastNonModalHash = React.useRef(window.location.hash && !window.location.hash.startsWith("#/jogo") ? window.location.hash : "#/" + (initialRoute.tab || "overview"));
       const T = I18N[lang];
       const meta = (window.DATA && window.DATA.meta) || {};
@@ -216,11 +217,21 @@
                 </button>
               ))}
             </nav>
+            {(tab === "overview" || tab === "stages") && (
+              <div className="global-search">
+                <span className="gs-ico" aria-hidden="true">🔎</span>
+                <input type="text" className="tsearch"
+                  placeholder={lang === "pt" ? "Buscar seleção…" : "Search team…"}
+                  value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                  aria-label={lang === "pt" ? "Buscar seleção no termômetro, grupos e chaveamento" : "Search team in thermometer, groups and bracket"} />
+                {searchTerm && <button className="gs-clear" onClick={() => setSearchTerm("")} aria-label={lang === "pt" ? "Limpar busca" : "Clear search"}>✕</button>}
+              </div>
+            )}
           </div>
 
           <main className="app">
-            {tab === "overview" && <HeroView    lang={lang} onPick={handleTeamPick} openPair={openPair} />}
-            {tab === "stages"   && <StagesView  lang={lang} onTeamPick={handleTeamPick} openPair={openPair} initialSub={initialRoute.stagesSub} />}
+            {tab === "overview" && <HeroView    lang={lang} onPick={handleTeamPick} openPair={openPair} searchTerm={searchTerm} />}
+            {tab === "stages"   && <StagesView  lang={lang} onTeamPick={handleTeamPick} openPair={openPair} initialSub={initialRoute.stagesSub} searchTerm={searchTerm} />}
             {tab === "calendar" && <CalendarView lang={lang} openMatch={openMatch} initFilters={calendarRoute} onRouteChange={handleCalendarRoute} />}
             {tab === "team"     && <TeamView    lang={lang} initId={jumpTeam} key={jumpTeam ?? "team"} openPair={openPair} onTeamRoute={handleTeamPick} />}
             {tab === "compare"  && <CompareView lang={lang} openPair={openPair} initPair={compareRoute} onCompareRoute={handleCompareRoute} />}

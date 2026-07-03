@@ -32,6 +32,7 @@ const I18N = {
     dataNote: "Dados de demonstração.", dataNoteBody: "As probabilidades e placares são fictícios, gerados a partir de um índice de força para ilustrar o painel. Estrutura pronta para receber seus dados reais.",
     roadmapTitle: "Próximas ideias para o painel",
     seedN: "Cabeça nº",
+    exportChamp: "Campeão (CSV)", exportGroups: "Grupos (CSV)", exportBracket: "Bracket (JSON)",
     langName: "Português"
   },
   en: {
@@ -61,6 +62,7 @@ const I18N = {
     dataNote: "Demo data.", dataNoteBody: "Probabilities and scores are fictional, derived from a strength index to illustrate the panel. Structure is ready for your real data.",
     roadmapTitle: "Next ideas for the dashboard",
     seedN: "Seed #",
+    exportChamp: "Champion (CSV)", exportGroups: "Groups (CSV)", exportBracket: "Bracket (JSON)",
     langName: "English"
   }
 };

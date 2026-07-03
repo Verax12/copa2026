@@ -1156,3 +1156,69 @@ button:focus:not(:focus-visible),
 
 /* placeholder de bandeira quando a seleção do mata-mata ainda é "a definir" */
 .mm-hero-tbd { background: rgba(255,255,255,.1); border-style: dashed; border-color: rgba(255,255,255,.35); }
+
+/* ═══════════════ TELA INICIAL: tema FIFA + busca + export + incerteza ═══════════════ */
+
+/* fundo com leve textura de "campo" */
+.app { background-color: #F4F7F0; }
+.wc-pattern {
+  background-image:
+    linear-gradient(45deg, rgba(212,21,21,.015) 25%, transparent 25%, transparent 75%, rgba(168,212,0,.012) 75%),
+    linear-gradient(-45deg, rgba(168,212,0,.012) 25%, transparent 25%, transparent 75%, rgba(212,21,21,.015) 75%);
+  background-size: 22px 22px; background-position: 0 0, 11px 11px;
+}
+/* leve gradiente vibrante nos cards-chave */
+.vibrant-wc { background-image: linear-gradient(135deg, rgba(212,21,21,.028) 0%, rgba(168,212,0,.02) 50%, rgba(0,155,140,.022) 100%); }
+
+/* faixa de cores vibrante FIFA sob a barra da marca + logo maior */
+.topbrand { position: relative; }
+.topbrand::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 5px; z-index: 2;
+  background: linear-gradient(to right, #D41515 0%, #E8571A 11%, #E8A000 22%, #7B35B0 33%, #009B8C 44%, #A8D400 55%, #D41515 66%, #7B35B0 77%, #E8571A 88%, #009B8C 100%);
+}
+.brand-logo { height: 76px !important; filter: drop-shadow(0 4px 12px rgba(0,0,0,.18)); transition: transform .12s ease; }
+.brand-logo:hover { transform: scale(1.04); }
+
+/* banner do campeão turbinado */
+.champ-banner { box-shadow: 0 6px 28px rgba(0,0,0,.09); }
+.cb-strip { height: 11px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+.cb-inner::after {
+  content: "⚽"; position: absolute; right: 20px; bottom: 12px; font-size: 66px;
+  opacity: .05; pointer-events: none; transform: rotate(-12deg); filter: grayscale(1);
+}
+.cb-champ { border: 1px solid rgba(168,212,0,.18); }
+
+/* ── topnav com busca global ── */
+.topnav { display: flex; align-items: center; gap: 10px; max-width: 1340px; margin: 0 auto; padding: 3px clamp(14px,3vw,36px); }
+.topnav .nav { flex: 1 1 auto; max-width: none; margin: 0; padding: 0; min-width: 0; }
+.global-search { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.global-search .gs-ico { font-size: 13px; opacity: .8; }
+.tsearch {
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.22); color: #fff;
+  border-radius: 100px; padding: 5px 12px; font-size: 13px; width: clamp(120px, 22vw, 220px);
+  outline: none; transition: border-color .12s, background .12s;
+}
+.tsearch::placeholder { color: rgba(255,255,255,.55); }
+.tsearch:focus { border-color: var(--lime); background: rgba(255,255,255,.18); }
+.gs-clear { background: rgba(255,255,255,.15); color: #fff; border: 0; width: 22px; height: 22px; border-radius: 50%; font-size: 11px; line-height: 1; }
+.gs-clear:hover { background: var(--red); }
+
+/* ── faixa de incerteza no termômetro ── */
+.thermo-bar { position: relative; }
+.thermo-ci { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.14); border-radius: 999px; z-index: 0; }
+.thermo-fill { position: relative; z-index: 1; }
+
+/* ── barra de export ── */
+.export-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 4px 0 18px; }
+.export-bar .export-lbl { font-family: var(--font-cond); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+.export-bar .btn { font-size: 12.5px; padding: 6px 12px; }
+
+/* ── explicador de % + dim de busca no bracket ── */
+.pct-explain { display: inline-block; margin-top: 4px; font-size: 11px; color: var(--teal); cursor: help; border-bottom: 1px dotted var(--teal); }
+.fbr-flag.dim { opacity: .22; filter: grayscale(.6); }
+
+@media (max-width: 640px) {
+  .brand-logo { height: 52px !important; }
+  .tsearch { width: 40vw; }
+  .export-bar .btn { flex: 1 1 auto; }
+}
