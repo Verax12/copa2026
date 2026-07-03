@@ -7,8 +7,13 @@ __pycache__/
 # settings locais do Claude Code (contêm a chave da API-Football — NUNCA commitar)
 .claude/settings.local.json
 
-# cache de dados externos (regenerável via thesportsdb --pull / api_football)
-api_cache/
+# cache de dados externos (regenerável via thesportsdb --pull / api_football).
+# EXCETO o cache do TheSportsDB (tsdb_*.json), que persistimos no repo: a fonte
+# grátis é rate-limitada e não reingere jogos antigos, então acumulamos a
+# cobertura commit a commit (senão a nuvem regenera do zero e pega quase nada).
+api_cache/*
+!api_cache/tsdb_events.json
+!api_cache/tsdb_stats_*.json
 
 # macOS
 .DS_Store

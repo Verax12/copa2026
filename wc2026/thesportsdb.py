@@ -63,29 +63,83 @@ def _get(url: str, timeout: float = 30.0) -> dict:
         return json.load(r)
 
 
+# janela do torneio (Copa 2026): 11/jun a 19/jul
+WC_START = "2026-06-11"
+WC_END = "2026-07-19"
+
+
+def _wc_dates() -> list[str]:
+    import datetime
+    d0 = datetime.date.fromisoformat(WC_START)
+    d1 = datetime.date.fromisoformat(WC_END)
+    out, d = [], d0
+    while d <= d1:
+        out.append(d.isoformat())
+        d += datetime.timedelta(days=1)
+    return out
+
+
+def _collect_events(verbose: bool) -> dict:
+    """Agrega os eventos da Copa de DUAS fontes do TheSportsDB e dedup por idEvent:
+      1) eventsseason.php (pega o que houver de uma vez);
+      2) eventsday.php?d=<data>&l=<liga> por dia — ESSENCIAL, porque o eventsseason
+         do tier grátis costuma travar nos primeiros jogos, enquanto o eventsday
+         entrega os jogos recentes (com estatística) normalmente.
+    """
+    events = {}
+    try:
+        data = _get(f"{BASE}/eventsseason.php?id={WC_LEAGUE}&s={SEASON}")
+        for e in (data.get("events") or []):
+            events[e["idEvent"]] = e
+    except Exception:
+        pass
+    for d in _wc_dates():
+        try:
+            r = _get(f"{BASE}/eventsday.php?d={d}&l={WC_LEAGUE}")
+            for e in (r.get("events") or []):
+                events[e["idEvent"]] = e
+            time.sleep(0.25)  # gentil com o serviço grátis
+        except Exception:
+            continue
+    if verbose:
+        print(f"{len(events)} eventos da Copa 2026 (eventsseason + eventsday, chave '{KEY}').")
+    return events
+
+
 def pull(verbose: bool = True) -> int:
-    """Baixa eventos da temporada + stats de cada jogo finalizado para o cache.
+    """Baixa eventos da Copa (todas as datas) + stats de cada jogo finalizado.
     Devolve o nº de jogos com estatística salvos."""
     CACHE.mkdir(exist_ok=True)
-    data = _get(f"{BASE}/eventsseason.php?id={WC_LEAGUE}&s={SEASON}")
-    events = data.get("events") or []
-    (CACHE / "tsdb_events.json").write_text(json.dumps(data))
-    if verbose:
-        print(f"{len(events)} eventos da Copa 2026 no TheSportsDB (chave '{KEY}').")
+    events = _collect_events(verbose)
+    (CACHE / "tsdb_events.json").write_text(json.dumps({"events": list(events.values())}))
 
     saved = 0
-    for e in events:
+    for e in events.values():
         # considera jogo válido se tem placar
         if e.get("intHomeScore") in (None, "") or e.get("intAwayScore") in (None, ""):
             continue
         eid = e["idEvent"]
         fp = CACHE / f"tsdb_stats_{eid}.json"
+        st = None
         if fp.exists():
-            st = json.loads(fp.read_text())
-        else:
-            st = _get(f"{BASE}/lookupeventstats.php?id={eid}")
-            fp.write_text(json.dumps(st))
-            time.sleep(0.4)  # gentil com o serviço grátis
+            try:
+                st = json.loads(fp.read_text())
+            except Exception:
+                st = None
+        if not (st and st.get("eventstats")):   # (re)baixa se não cacheado ou cache vazio
+            # o tier grátis costuma throttlear em lote (retorna vazio); 1 retry com
+            # pausa resolve a maioria. Só grava quando vem estatística de fato, então
+            # jogos throttlados são re-tentados no próximo run (cache persistido no repo).
+            st = {}
+            for attempt in (0, 1):
+                try:
+                    st = _get(f"{BASE}/lookupeventstats.php?id={eid}")
+                except Exception:
+                    st = {}
+                if st.get("eventstats"):
+                    fp.write_text(json.dumps(st))
+                    break
+                time.sleep(1.5)
         if st.get("eventstats"):
             saved += 1
             if verbose:

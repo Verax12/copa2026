@@ -59,9 +59,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # api_cache é gitignored (caches regeneráveis) — NÃO incluir aqui, senão
-          # `git add` de caminho ignorado falha sob `bash -e` e quebra o workflow.
-          git add results.csv goalscorers.csv shootouts.csv web/wc_data.js
+          # o grosso do api_cache é gitignored (regenerável). Exceção: o cache do
+          # TheSportsDB (api_cache/tsdb_*.json, liberado no .gitignore) é persistido
+          # para ACUMULAR cobertura de estatísticas (a fonte grátis é rate-limitada
+          # e não reingere jogos antigos). `git add api_cache/` adiciona só os
+          # tsdb_* liberados e ignora o resto, sem falhar sob `bash -e`.
+          git add results.csv goalscorers.csv shootouts.csv web/wc_data.js api_cache/
           if git diff --cached --quiet; then
             echo "Nenhuma mudança nos dados."
           else
