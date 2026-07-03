@@ -218,9 +218,9 @@
               ))}
             </nav>
             {(tab === "overview" || tab === "stages") && (
-              <div className="global-search">
-                <span className="gs-ico" aria-hidden="true">🔎</span>
-                <input type="text" className="tsearch"
+              <div className={"global-search" + (searchTerm ? " has-value" : "")}>
+                <label className="gs-ico" htmlFor="team-search" title={lang === "pt" ? "Buscar seleção" : "Search team"}>🔎</label>
+                <input type="text" id="team-search" className="tsearch"
                   placeholder={lang === "pt" ? "Buscar seleção…" : "Search team…"}
                   value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
                   aria-label={lang === "pt" ? "Buscar seleção no termômetro, grupos e chaveamento" : "Search team in thermometer, groups and bracket"} />

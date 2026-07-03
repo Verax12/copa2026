@@ -1222,3 +1222,17 @@ button:focus:not(:focus-visible),
   .tsearch { width: 40vw; }
   .export-bar .btn { flex: 1 1 auto; }
 }
+
+/* mobile/estreito: a busca vira só o ícone 🔎 e expande ao focar (ou quando já
+   tem texto), pra não apertar as abas do nav. No desktop segue inline. */
+@media (max-width: 820px) {
+  .global-search .tsearch {
+    width: 0; padding-left: 0; padding-right: 0; border-width: 0; opacity: 0;
+    transition: width .2s ease, opacity .15s ease, padding .2s ease;
+  }
+  .global-search .gs-ico { cursor: pointer; font-size: 17px; padding: 2px 4px; }
+  .global-search:focus-within .tsearch,
+  .global-search.has-value .tsearch {
+    width: 46vw; padding: 5px 12px; border-width: 1px; opacity: 1;
+  }
+}
