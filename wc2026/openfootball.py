@@ -39,7 +39,10 @@ def played_games() -> pd.DataFrame:
     data = json.loads(CACHE_FILE.read_text())
     rows = []
     for m in data.get("matches", []):
-        ft = (m.get("score") or {}).get("ft")
+        sc = m.get("score") or {}
+        # prorrogação conta como placar final (convenção da martj42): "et" quando
+        # houver, senão "ft". Pênaltis ("p") NÃO entram no placar do jogo.
+        ft = sc.get("et") or sc.get("ft")
         if not ft:
             continue   # jogo ainda não disputado (placeholders 1A/W73/... entram aqui)
         rows.append({

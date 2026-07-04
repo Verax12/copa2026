@@ -509,17 +509,33 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
             played_lookup[(idx[r.away_team], idx[r.home_team])] = (int(r.away_score), int(r.home_score))
     played_winners = {}
 
+    # Placar das disputas de pênaltis (score.p do openfootball) — a martj42 não
+    # guarda a disputa, então este é o registro REAL de quem avançou num empate.
+    from .live_form import normalize_team  # reconcilia grafia do openfootball com o idx
+    pens_lookup = {}
+    if fpk.exists():
+        for m in J.loads(fpk.read_text()).get("matches", []):
+            p = (m.get("score") or {}).get("p")
+            hp = idx.get(normalize_team(m.get("team1", "")))
+            ap = idx.get(normalize_team(m.get("team2", "")))
+            if p and hp is not None and ap is not None:
+                pens_lookup[(hp, ap)] = (int(p[0]), int(p[1]))
+                pens_lookup[(ap, hp)] = (int(p[1]), int(p[0]))
+
     def _draw_aware_winner(actual, home_id, away_id, ph, pa):
         """Quem avança num confronto de mata-mata já disputado.
-        Vitória no tempo normal → o vencedor. Empate (foi aos pênaltis, mas a
-        base gratuita não guarda o placar da disputa) → placeholder pelo favorito
-        pré-jogo (maior prob. de vitória no modelo), em vez de assumir o visitante.
-        Vale só enquanto o openfootball ainda não reescreveu o rótulo para o nome
-        do classificado real — quando reescreve, esse nome (autoritativo) prevalece."""
+        Vitória no tempo normal/prorrogação → o vencedor. Empate → 1º tenta o
+        placar REAL dos pênaltis (pens_lookup, via openfootball); só sem ele cai
+        no placeholder do favorito pré-jogo do modelo (em vez de assumir o
+        visitante). O rótulo literal do openfootball na fase seguinte (nome do
+        classificado) continua prevalecendo quando existir — ver _resolve_winner."""
         if actual[0] > actual[1]:
             return home_id
         if actual[0] < actual[1]:
             return away_id
+        p = pens_lookup.get((home_id, away_id))
+        if p:
+            return home_id if p[0] > p[1] else away_id
         return home_id if (ph or 0) >= (pa or 0) else away_id
 
     if fpk.exists():
@@ -560,8 +576,6 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
     # Add other KO rounds (R16+) using winner labels from prior, pre-filling known advancers.
     # Process round-by-round so that when a round's results are in played (daily update),
     # its winners are inserted into the next round's calendar entries (known team vs "aguardando").
-    from .live_form import normalize_team  # reconcilia grafia do openfootball com o idx
-
     def _resolve_winner(label, winners):
         """Resolve o rótulo de um confronto de mata-mata para o id da seleção.
         Dois formatos convivem no openfootball para o MESMO slot:
