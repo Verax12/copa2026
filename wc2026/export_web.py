@@ -508,6 +508,20 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
             played_lookup[(idx[r.home_team], idx[r.away_team])] = (int(r.home_score), int(r.away_score))
             played_lookup[(idx[r.away_team], idx[r.home_team])] = (int(r.away_score), int(r.home_score))
     played_winners = {}
+
+    def _draw_aware_winner(actual, home_id, away_id, ph, pa):
+        """Quem avança num confronto de mata-mata já disputado.
+        Vitória no tempo normal → o vencedor. Empate (foi aos pênaltis, mas a
+        base gratuita não guarda o placar da disputa) → placeholder pelo favorito
+        pré-jogo (maior prob. de vitória no modelo), em vez de assumir o visitante.
+        Vale só enquanto o openfootball ainda não reescreveu o rótulo para o nome
+        do classificado real — quando reescreve, esse nome (autoritativo) prevalece."""
+        if actual[0] > actual[1]:
+            return home_id
+        if actual[0] < actual[1]:
+            return away_id
+        return home_id if (ph or 0) >= (pa or 0) else away_id
+
     if fpk.exists():
         ko_matches = [m for m in J.loads(fpk.read_text()).get("matches", []) if m.get("round") == "Round of 32"]
         for i, m in enumerate(ko_matches):
@@ -539,22 +553,31 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
                 "video": "", "thumb": "",
             }
             if ft:
-                winner = hh if actual[0] > actual[1] else aa
+                winner = _draw_aware_winner(actual, hh, aa, ph, pa)
                 played_winners[m.get("num")] = winner
             ko_cal.append(entry)
 
     # Add other KO rounds (R16+) using winner labels from prior, pre-filling known advancers.
     # Process round-by-round so that when a round's results are in played (daily update),
     # its winners are inserted into the next round's calendar entries (known team vs "aguardando").
+    from .live_form import normalize_team  # reconcilia grafia do openfootball com o idx
+
     def _resolve_winner(label, winners):
-        if label and label.startswith("W"):
-            try:
-                num = int(label[1:])
-                if num in winners:
-                    return winners[num]
-            except Exception:
-                pass
-        return None
+        """Resolve o rótulo de um confronto de mata-mata para o id da seleção.
+        Dois formatos convivem no openfootball para o MESMO slot:
+          1) "W<num>" (ex.: "W74") enquanto o jogo anterior não terminou →
+             busca o vencedor já apurado em `winners` (None se ainda indefinido);
+          2) o NOME literal do classificado (ex.: "Canada", "Brazil") — o
+             openfootball reescreve "W74" para o nome assim que o jogo termina.
+             Antes isso caía fora e o slot ficava "A definir" mesmo com o
+             classificado conhecido: resolve pelo idx (com normalização de grafia).
+        O nome literal é a fonte AUTORITATIVA (inclui quem passou nos pênaltis)."""
+        label = (label or "").strip()
+        if not label:
+            return None
+        if label[0] == "W" and label[1:].isdigit():   # rótulo "W74"
+            return winners.get(int(label[1:]))
+        return idx.get(normalize_team(label))          # rótulo = nome do classificado
 
     ROUND_ORDER = ["Round of 16", "Quarter-final", "Semi-final", "Final", "Match for third place"]
     if fpk.exists():
@@ -604,7 +627,8 @@ def export(engine: str = "dixon", sims: int = 20000, live: bool = False,
                     if act:
                         e["played"] = True
                         e["actual"] = list(act)
-                        win = e["home"] if act[0] > act[1] else e["away"]
+                        pr = e.get("pred") or {}
+                        win = _draw_aware_winner(act, e["home"], e["away"], pr.get("ph", 0), pr.get("pa", 0))
                         played_winners[e.get("num")] = win
     # will extend calendar after build
 
