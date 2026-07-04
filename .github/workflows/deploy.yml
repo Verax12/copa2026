@@ -23,12 +23,24 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
+      # 1ª tentativa: o backend do Pages às vezes rejeita na hora ("Deployment
+      # failed, try again later.") — um erro transitório do GitHub, não do build.
+      # continue-on-error deixa a 2ª tentativa acontecer em vez de já falhar o run.
       - id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      - name: Esperar antes de repetir o deploy
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+      # 2ª tentativa: só roda se a 1ª falhou. Se ESTA também falhar, o run fica
+      # vermelho (aí é problema de verdade, não um soluço transitório).
+      - id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
