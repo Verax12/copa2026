@@ -4,6 +4,8 @@
    - Garante que não há console.error/pageerror
 */
 const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const { chromium } = require('playwright');
 
 const PORT = Number(process.env.PORT || 8787);
@@ -38,6 +40,26 @@ async function main() {
     await waitForServer();
     const browser = await chromium.launch({ args: ['--no-sandbox'] });
     const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+
+    // Reproduz o bug que já apareceu em produção: a campeã determinística
+    // (bracket) fica em 2º no ranking de probabilidade e era renderizada duas
+    // vezes no pódio do overview. Só mockamos o primeiro carregamento.
+    const wcDataSrc = fs.readFileSync(path.join(ROOT, 'web', 'wc_data.js'), 'utf8');
+    let mockOverviewData = true;
+    await page.route('**/wc_data.js*', async route => {
+      if (!mockOverviewData) return route.continue();
+      mockOverviewData = false;
+      const raw = wcDataSrc.slice(wcDataSrc.indexOf('window.WC_DATA = ') + 'window.WC_DATA = '.length).trim().replace(/;$/, '');
+      const data = JSON.parse(raw);
+      // Espanha vira #1 e Argentina (#36, campeã no bracket) cai para #2.
+      data.titleProb['28'] = 25;
+      data.titleProb['36'] = 18;
+      await route.fulfill({
+        contentType: 'application/javascript',
+        body: `/* smoke mock */\nwindow.WC_DATA = ${JSON.stringify(data)};`,
+      });
+    });
+
     const errors = [];
     page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
     page.on('pageerror', err => errors.push(`PAGEERR: ${err.message}`));
@@ -50,6 +72,9 @@ async function main() {
 
     await goto('#/overview');
     await page.waitForSelector('.model-perf');
+    const heroChamp = (await page.locator('.cb-champ .n').innerText()).trim();
+    const heroRunners = await page.locator('.cb-runner .nm').evaluateAll(els => els.map(e => e.textContent.trim()));
+    if (heroRunners.includes(heroChamp)) throw new Error(`Overview duplicou a campeã no pódio: ${heroChamp}`);
 
     await goto('#/calendario?team=brasil&group=C');
     await page.waitForSelector('.cal-advanced');

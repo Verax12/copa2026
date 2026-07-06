@@ -48,9 +48,14 @@ function ChampionHero({ lang, onPick }) {
   const T = I18N[lang];
   const ranked = useMemo(() =>
     D.teams.map(t => ({ id: t.id, p: D.titleProb[t.id] }))
-      .sort((a, b) => b.p - a.p).slice(0, 3), []);
+      .sort((a, b) => b.p - a.p), []);
   const champId = D.baseBracket.champion;
   const champP = D.titleProb[champId];
+  // A campeã em destaque vem do bracket determinístico. Se ela não for a
+  // #1 em probabilidade nas simulações, não podemos simplesmente usar
+  // ranked.slice(1): isso pode repetir a mesma seleção no card principal e
+  // no “pódio” logo abaixo (ex.: Argentina campeã e também 🥈).
+  const runners = ranked.filter(r => r.id !== champId).slice(0, 2);
 
   return (
     <div className="champ-banner card card-accent vibrant-wc">
@@ -79,7 +84,7 @@ function ChampionHero({ lang, onPick }) {
 
         {/* vice + terceiro logo abaixo do campeão */}
         <div className="cb-runners">
-          {ranked.slice(1).map((r, i) => (
+          {runners.map((r, i) => (
             <div key={r.id} className="cb-runner" {...clickable(() => onPick(r.id), WC.name(r.id, lang))}>
               <span className="medal">{i === 0 ? "🥈" : "🥉"}</span>
               <Flag id={r.id} w={40} />
@@ -512,13 +517,16 @@ function BracketView({ lang, openPair, searchTerm }) {
   // jogos já disputados aparecem travados (classe .played) com o placar real.
   function tie(m) {
     const cls = "fbr-tie" + (m.played ? " played" : (overrides[m.id] != null ? " edited" : ""));
-    const scoreTxt = m.score[0] + "–" + m.score[1] + (m.shootout ? (pt ? " (pên.)" : " (pens)") : "");
+    const scoreMain = m.score[0] + "–" + m.score[1];
+    const scoreTxt = scoreMain + (m.shootout ? (pt ? " (pên.)" : " (pens)") : "");
     return (
       <span className={cls}
-            title={WC.name(m.a, lang) + " " + scoreTxt + " " + WC.name(m.b, lang) + (m.played ? (pt ? " · resultado real" : " · real result") : "")}>
+            title={WC.name(m.a, lang) + " " + scoreTxt + " " + WC.name(m.b, lang) + (m.played ? (pt ? " · resultado real" : " · real result") : (pt ? " · previsão" : " · prediction"))}>
         <TeamTile id={m.a} win={m.winner === m.a} played={m.played} onClick={() => toggle(m, m.a)} label={WC.name(m.a, lang)} lang={lang} dim={dimOf(m.a)} />
+        <span className={"fbr-ft" + (m.played ? " real" : " pred")} title={m.played ? (pt ? "Placar real" : "Real score") : (pt ? "Placar previsto" : "Predicted score")}>
+          {scoreMain}{m.shootout && <small>{pt ? "P" : "P"}</small>}
+        </span>
         <TeamTile id={m.b} win={m.winner === m.b} played={m.played} onClick={() => toggle(m, m.b)} label={WC.name(m.b, lang)} lang={lang} dim={dimOf(m.b)} />
-        {m.played && <span className="fbr-ft" title={pt ? "Placar real" : "Real score"}>{scoreTxt}</span>}
       </span>
     );
   }
@@ -573,16 +581,22 @@ function BracketView({ lang, openPair, searchTerm }) {
       <div className="fbr-scroll">
         <div className="fbr">
           <div className="fbr-title">FIFA WORLD CUP 2026<sup>™</sup></div>
+          <div className="fbr-rounds-hd" aria-hidden="true">
+            <span>R32</span><span>{ROUND_NAMES[lang].R16}</span><span>{ROUND_NAMES[lang].QF}</span><span>{ROUND_NAMES[lang].SF}</span>
+            <span>{pt ? "Final" : "Final"}</span>
+            <span>{ROUND_NAMES[lang].SF}</span><span>{ROUND_NAMES[lang].QF}</span><span>{ROUND_NAMES[lang].R16}</span><span>R32</span>
+          </div>
 
           <div className="fbr-grid">
             <div className="fbr-half left">{node("SF", 0)}</div>
 
             <div className="fbr-center">
               <div className="fbr-champ">
+                <div className="fbr-cup" aria-hidden="true">🏆</div>
                 <div className="fbr-champ-lbl">{pt ? "Campeã do Mundo" : "World Champion"}</div>
                 <span className="fbr-champ-flag"><Flag id={champId} w={90} /></span>
                 <div className="fbr-champ-nm">{WC.name(champId, lang)}</div>
-                <div className="fbr-champ-pct"><span className="tp">🏆</span> {D.titleProb[champId].toFixed(1)}%</div>
+                <div className="fbr-champ-pct">{D.titleProb[champId].toFixed(1)}% {pt ? "chance" : "chance"}</div>
               </div>
 
               <div className="fbr-final">
