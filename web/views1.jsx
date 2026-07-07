@@ -49,12 +49,14 @@ function ChampionHero({ lang, onPick }) {
   const ranked = useMemo(() =>
     D.teams.map(t => ({ id: t.id, p: D.titleProb[t.id] }))
       .sort((a, b) => b.p - a.p), []);
-  const champId = D.baseBracket.champion;
+  // "Favorita ao título" = líder de probabilidade do Monte Carlo (argmax de
+  // titleProb) — o rótulo e o % exibidos são de chance de título, então o
+  // destaque tem que ser a nº 1 nas simulações. O campeão do passeio
+  // determinístico do chaveamento (D.baseBracket.champion) é outro conceito e
+  // pode divergir (ex.: Espanha 21% líder, passeio coroando a Argentina 16%);
+  // ele continua aparecendo como "Campeã prevista" na aba Etapas.
+  const champId = ranked.length ? ranked[0].id : D.baseBracket.champion;
   const champP = D.titleProb[champId];
-  // A campeã em destaque vem do bracket determinístico. Se ela não for a
-  // #1 em probabilidade nas simulações, não podemos simplesmente usar
-  // ranked.slice(1): isso pode repetir a mesma seleção no card principal e
-  // no “pódio” logo abaixo (ex.: Argentina campeã e também 🥈).
   const runners = ranked.filter(r => r.id !== champId).slice(0, 2);
 
   return (
