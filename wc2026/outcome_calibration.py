@@ -96,11 +96,23 @@ class CalibratedGoalModel:
         self.alpha = float(alpha)
         self.rho = float(getattr(base, "rho", -0.05))
 
-    def outcome_probs(self, home: str, away: str, neutral: bool = True) -> tuple[float, float, float]:
+    def _blend(self, home: str, away: str, neutral: bool) -> np.ndarray:
         base = np.asarray(self.base.outcome_probs(home, away, neutral=neutral), dtype=float)
         cal = np.asarray(self.calibrator.predict(self.base, home, away, neutral), dtype=float)
         out = (1.0 - self.alpha) * base + self.alpha * cal
-        out /= out.sum()
+        return out / out.sum()
+
+    def outcome_probs(self, home: str, away: str, neutral: bool = True) -> tuple[float, float, float]:
+        out = self._blend(home, away, neutral)
+        if neutral:
+            # O calibrador foi treinado em jogos reais (maioria COM mando), então
+            # carrega um prior de mando que features espelhadas não anulam. Em
+            # campo neutro P(A vence B) não pode depender da ordem do par:
+            # simetrizamos com a orientação invertida (mesmo princípio da tabela
+            # do MLGoalModel). Com neutral=False (anfitrião) a orientação vale.
+            back = self._blend(away, home, neutral)
+            out = np.asarray([out[0] + back[2], out[1] + back[1], out[2] + back[0]]) / 2.0
+            out /= out.sum()
         return float(out[0]), float(out[1]), float(out[2])
 
     def score_matrix(self, home: str, away: str, neutral: bool = True) -> np.ndarray:

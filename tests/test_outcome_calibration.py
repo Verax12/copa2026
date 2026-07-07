@@ -32,7 +32,9 @@ class FakeCalibrator:
 
 def test_calibrated_goal_model_rescales_outcome_regions():
     model = CalibratedGoalModel(FakeBase(), FakeCalibrator(), alpha=1.0)
-    m = model.score_matrix("A", "B")
+    # neutral=False (mando real): sem simetrização — testa o reescalonamento
+    # puro das regiões V/E/D para o alvo calibrado.
+    m = model.score_matrix("A", "B", neutral=False)
     ph = float(np.tril(m, -1).sum())
     pd = float(np.trace(m))
     pa = float(np.triu(m, 1).sum())
@@ -43,6 +45,21 @@ def test_calibrated_goal_model_rescales_outcome_regions():
     assert abs(pa - 0.20) < 1e-9
 
 
+def test_calibrated_goal_model_symmetric_on_neutral():
+    """Em campo neutro P(A vence B) não pode depender da ordem do par: o
+    calibrador (treinado em jogos COM mando) é simetrizado com a orientação
+    invertida. O fake devolve (0.50, 0.30, 0.20) nas duas orientações, então
+    o alvo simetrizado é ((0.5+0.2)/2, 0.3, (0.2+0.5)/2) = (0.35, 0.30, 0.35)."""
+    model = CalibratedGoalModel(FakeBase(), FakeCalibrator(), alpha=1.0)
+    ph1, pd1, pa1 = model.outcome_probs("A", "B", neutral=True)
+    ph2, pd2, pa2 = model.outcome_probs("B", "A", neutral=True)
+    assert abs(ph1 - pa2) < 1e-12 and abs(pa1 - ph2) < 1e-12 and abs(pd1 - pd2) < 1e-12
+    assert abs(ph1 - 0.35) < 1e-9
+    assert abs(pd1 - 0.30) < 1e-9
+    assert abs(pa1 - 0.35) < 1e-9
+
+
 if __name__ == "__main__":
     test_calibrated_goal_model_rescales_outcome_regions()
-    print("ok  outcome_calibration: matriz reescalada para V/E/D calibrado")
+    test_calibrated_goal_model_symmetric_on_neutral()
+    print("ok  outcome_calibration: reescala V/E/D + simetria em campo neutro")

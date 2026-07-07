@@ -133,6 +133,20 @@ class MLGoalModel:
         lam, mu = goal_ml.expected_goals(big)
         self._lam = {k: float(l) for k, l in zip(keys, lam)}
         self._mu = {k: float(m) for k, m in zip(keys, mu)}
+        # Campo neutro: P(A vence B) não pode depender da ordem em que o par é
+        # listado. O booster carrega resíduos de mando que o neutral=True das
+        # features não zera (viés sistemático pró-"visitante": Espanha×Argentina
+        # favorecia a Argentina E Argentina×Espanha favorecia a Espanha), então
+        # simetrizamos: o λ de A contra B = média entre A listado como mandante
+        # e A listado como visitante. Garante expected_goals(a,b) == espelho de
+        # (b,a) em TODA a pipeline (Monte Carlo, bracket, calendário, comparador).
+        # O mando real dos anfitriões é aplicado fora daqui (venue.py, via DC).
+        for h, a in keys:
+            if h < a:   # visita cada par não-ordenado uma única vez
+                la = 0.5 * (self._lam[(h, a)] + self._mu[(a, h)])
+                lb = 0.5 * (self._mu[(h, a)] + self._lam[(a, h)])
+                self._lam[(h, a)], self._mu[(h, a)] = la, lb
+                self._lam[(a, h)], self._mu[(a, h)] = lb, la
 
     def expected_goals(self, home: str, away: str, neutral: bool = True) -> tuple[float, float]:
         return self._lam[(home, away)], self._mu[(home, away)]
